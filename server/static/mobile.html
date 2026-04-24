@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GlitchWatch Mobile</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        body { background: #000; color: #0f0; font-family: monospace; text-align: center; padding: 20px; overflow: hidden; }
+        .p-val { font-size: 3em; margin: 10px 0; }
+        .label { color: #080; font-size: 0.8em; text-transform: uppercase; }
+        .status { border: 1px solid #0f0; padding: 10px; margin-top: 20px; font-size: 0.7em; }
+        input { background: #000; border: 1px solid #080; color: #0f0; padding: 5px; width: 80%; margin-top: 10px; }
+        .glitch-flash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #f00; display: none; opacity: 0.5; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div id="flash" class="glitch-flash"></div>
+    
+    <div class="label">Rolling P-Values</div>
+    <div id="monobit-p" class="p-val">1.000</div>
+    <div class="label">Monobit (Bias)</div>
+    
+    <div id="runs-p" class="p-val" style="margin-top:20px;">1.000</div>
+    <div class="label">Runs (Pattern)</div>
+
+    <div class="status">
+        NODE ID: <span id="node-id">...</span><br>
+        SENT TO SERVER: <span id="server-status">WAITING</span><br>
+        SENT TO NTFY: <span id="ntfy-status">OFF</span>
+    </div>
+
+    <input type="text" id="ntfy-topic" placeholder="Personal ntfy.sh topic (optional)">
+    <div class="label">Personal Alerts</div>
+
+    <script>
+        const SERVER_URL = window.location.origin;
+        const CLIENT_ID = 'mobile-' + Math.random().toString(36).substr(2, 9);
+        document.getElementById('node-id').innerText = CLIENT_ID;
+
+        let bitBuffer = [];
+        const WINDOW_SIZE = 1000;
+        const THRESHOLD = 0.01;
+
+        function erfc(x) {
+            const z = Math.abs(x);
+            const t = 1 / (1 + 0.5 * z);
+            const r = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 +
+                t * (0.37409196 + t * (0.09678418 + t * (-0.18628806 +
+                t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 +
+                t * (-0.82215223 + t * 0.17087277))))))))));
+            return x >= 0 ? r : 2 - r;
+        }
+
+        async function report(type, pVal) {
+            document.getElementById('flash').style.display = 'block';
+            setTimeout(() => document.getElementById('flash').style.display = 'none', 500);
+
+            // Central Report
+            fetch(`${SERVER_URL}/api/report`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client_id: CLIENT_ID, test_type: type, p_value: pVal })
+            });
+
+            // Personal Ntfy
+            const topic = document.getElementById('ntfy-topic').value;
+            if (topic) {
+                fetch(`https://ntfy.sh/${topic}`, {
+                    method: 'POST',
+                    body: `🚨 GlitchWatch Mobile: ${type.toUpperCase()} Detected (P=${pVal.toFixed(6)})`
+                });
+            }
+        }
+
+        function analyze() {
+            if (bitBuffer.length < WINDOW_SIZE) return;
+
+            // Monobit
+            const s = bitBuffer.reduce((a, b) => a + (b === 1 ? 1 : -1), 0);
+            const sObs = Math.abs(s) / Math.sqrt(WINDOW_SIZE);
+            const pMonobit = erfc(sObs / Math.sqrt(2));
+            document.getElementById('monobit-p').innerText = pMonobit.toFixed(4);
+
+            // Runs
+            const pi = bitBuffer.reduce((a, b) => a + b, 0) / WINDOW_SIZE;
+            let vObs = 1;
+            for (let i = 0; i < WINDOW_SIZE - 1; i++) {
+                if (bitBuffer[i] !== bitBuffer[i+1]) vObs++;
+            }
+            const pRuns = erfc(Math.abs(vObs - 2 * WINDOW_SIZE * pi * (1 - pi)) / (2 * Math.sqrt(2 * WINDOW_SIZE) * pi * (1 - pi)));
+            document.getElementById('runs-p').innerText = pRuns.toFixed(4);
+
+            if (pMonobit < THRESHOLD) { report('monobit', pMonobit); bitBuffer = []; }
+            else if (pRuns < THRESHOLD) { report('runs', pRuns); bitBuffer = []; }
+        }
+
+        function drip() {
+            const bytes = new Uint8Array(1);
+            window.crypto.getRandomValues(bytes);
+            const bits = bytes[0].toString(2).padStart(8, '0').split('').map(Number);
+            bitBuffer.push(...bits);
+            if (bitBuffer.length > WINDOW_SIZE) bitBuffer.shift();
+            
+            if (Math.random() < 0.1) analyze(); // Sparse analysis to save battery
+            setTimeout(drip, 1000);
+        }
+
+        // Heartbeat
+        setInterval(() => {
+            fetch(`${SERVER_URL}/api/heartbeat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client_id: CLIENT_ID })
+            }).then(() => {
+                document.getElementById('server-status').innerText = 'OK ' + new Date().toLocaleTimeString();
+            });
+        }, 60000);
+
+        drip();
+    </script>
+</body>
+</html>

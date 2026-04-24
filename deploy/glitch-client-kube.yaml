@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: glitch-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: glitch-client
+  template:
+    metadata:
+      labels:
+        app: glitch-client
+    spec:
+      containers:
+      - name: glitch-client
+        image: localhost/glitch-client:latest
+        imagePullPolicy: Never
+        env:
+        # The URL of your central server running elsewhere
+        - name: SERVER_URL
+          value: "http://www.track3.org.uk:8002"
+        # Your personal notification channel
+        - name: NTFY_TOPIC
+          value: "steve_random_glitch"

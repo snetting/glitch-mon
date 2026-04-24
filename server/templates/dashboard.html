@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Randomness Monitor</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Courier New', Courier, monospace; background: #000; color: #0f0; margin: 0; padding: 20px; }
+        h1 { text-align: center; text-transform: uppercase; letter-spacing: 5px; }
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1200px; margin: 0 auto; }
+        #map { height: 400px; border: 1px solid #0f0; position: relative; }
+        .map-controls { 
+            position: absolute; top: 10px; right: 10px; z-index: 1000; 
+            background: rgba(0,0,0,0.8); border: 1px solid #0f0; padding: 5px; font-size: 0.7em;
+        }
+        .map-controls button { 
+            background: #000; color: #0f0; border: 1px solid #080; cursor: pointer; margin: 0 2px;
+        }
+        .map-controls button.active { background: #0f0; color: #000; }
+        .stats-panel { border: 1px solid #0f0; padding: 15px; background: #050505; }
+        .chart-container { grid-column: span 2; height: 300px; border: 1px solid #0f0; padding: 10px; }
+        .glitch-list { height: 350px; overflow-y: auto; font-size: 0.8em; }
+        .glitch-item { border-bottom: 1px solid #030; padding: 5px 0; }
+        .active-count { font-size: 2em; text-align: center; color: #fff; }
+    </style>
+</head>
+<body>
+    <h1>Randomness Anomaly Dashboard</h1>
+    
+    <div class="container">
+        <div id="map">
+            <div class="map-controls">
+                MAP WINDOW: 
+                <button onclick="setMapWindow(900, this)">15M</button>
+                <button onclick="setMapWindow(3600, this)" class="active">1H</button>
+                <button onclick="setMapWindow(86400, this)">24H</button>
+            </div>
+        </div>
+        <div class="stats-panel">
+            <div>ACTIVE REPORTERS:</div>
+            <div id="active-reporters" class="active-count">0</div>
+            <div style="margin-top:20px;">LATEST ANOMALIES:</div>
+            <div id="glitch-list" class="glitch-list"></div>
+        </div>
+        <div class="chart-container">
+            <canvas id="correlationChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const map = L.map('map').setView([20, 0], 2);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+        let markers = [];
+        let mapWindowSeconds = 3600;
+
+        function setMapWindow(seconds, btn) {
+            mapWindowSeconds = seconds;
+            document.querySelectorAll('.map-controls button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            updateData();
+        }
+
+        const ctx = document.getElementById('correlationChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Global Correlation Score (Anomalies / Reporter)',
+                    borderColor: '#0f0',
+                    backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                    data: [],
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, grid: { color: '#030' }, ticks: { color: '#0f0' } },
+                    x: { grid: { color: '#030' }, ticks: { color: '#0f0' } }
+                },
+                plugins: { legend: { labels: { color: '#0f0' } } }
+            }
+        });
+
+        async function updateData() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+                const now = Date.now() / 1000;
+                
+                document.getElementById('active-reporters').innerText = data.active_clients;
+                
+                // Update Map
+                markers.forEach(m => map.removeLayer(m));
+                markers = [];
+                data.anomalies.forEach(a => {
+                    const age = now - a.timestamp;
+                    if (age <= mapWindowSeconds) {
+                        let lat = a.latitude;
+                        let lon = a.longitude;
+                        let locName = a.country || 'Position Unknown';
+                        
+                        // If coordinates are 0,0 or null (localhost or failed lookup)
+                        if (!lat && !lon) {
+                            lat = 30 + (Math.random() * 5 - 2.5); // Spread slightly in Mid-Atlantic
+                            lon = -30 + (Math.random() * 5 - 2.5);
+                            locName = 'Position Unknown';
+                        }
+                        
+                        const m = L.circleMarker([lat, lon], {
+                            radius: 8, color: '#f00', fillColor: '#f00', fillOpacity: 0.6
+                        }).addTo(map)
+                        .bindPopup(`<b>${a.test_type.toUpperCase()}</b><br>[${(a.client_id || '').substring(0,8)}]<br>${locName}<br>${new Date(a.timestamp * 1000).toLocaleString()}<br>P=${a.p_value.toFixed(6)}`);
+                        markers.push(m);
+                    }
+                });
+
+                // Update List
+                const list = document.getElementById('glitch-list');
+                list.innerHTML = data.anomalies.map(a => {
+                    const locName = (!a.latitude && !a.longitude) || a.country === 'Localhost' ? 'Position Unknown' : a.country;
+                    return `
+                    <div class="glitch-item">
+                        [${new Date(a.timestamp * 1000).toLocaleTimeString()}] [${(a.client_id || 'Unknown').substring(0,8)}] ${locName}: 
+                        ${a.test_type.toUpperCase()} (P=${a.p_value.toFixed(4)})
+                    </div>
+                    `;
+                }).join('');
+
+                // Update Chart (10-minute correlation windows)
+                const windowSize = 600; // 10 minutes
+                const labels = [];
+                const scores = [];
+                
+                for (let i = 36; i >= 0; i--) {
+                    const windowEnd = now - (i * windowSize);
+                    const windowStart = windowEnd - windowSize;
+                    const count = data.anomalies.filter(a => a.timestamp >= windowStart && a.timestamp < windowEnd).length;
+                    
+                    labels.push(new Date(windowEnd * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+                    scores.push(count / data.active_clients);
+                }
+                
+                chart.data.labels = labels;
+                chart.data.datasets[0].data = scores;
+                chart.update('none');
+
+            } catch (e) { console.error(e); }
+        }
+
+        setInterval(updateData, 10000);
+        updateData();
+    </script>
+</body>
+</html>
