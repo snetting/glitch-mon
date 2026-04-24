@@ -12,25 +12,30 @@
         .status { border: 1px solid #0f0; padding: 10px; margin-top: 20px; font-size: 0.7em; }
         input { background: #000; border: 1px solid #080; color: #0f0; padding: 5px; width: 80%; margin-top: 10px; }
         .glitch-flash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #f00; display: none; opacity: 0.5; pointer-events: none; }
+        .progress-bar { width: 80%; border: 1px solid #0f0; height: 10px; margin: 10px auto; background: #000; }
+        .progress-fill { height: 100%; background: #0f0; width: 0%; transition: width 0.2s; }
     </style>
 </head>
 <body>
     <div id="flash" class="glitch-flash"></div>
     
     <div class="label">Rolling P-Values</div>
-    <div id="monobit-p" class="p-val">1.000</div>
+    <div id="monobit-p" class="p-val">Wait...</div>
     <div class="label">Monobit (Bias)</div>
     
-    <div id="runs-p" class="p-val" style="margin-top:20px;">1.000</div>
+    <div id="runs-p" class="p-val" style="margin-top:20px;">Wait...</div>
     <div class="label">Runs (Pattern)</div>
 
+    <div class="label" style="margin-top: 15px;">Buffer (<span id="bit-count">0</span>/1000 bits)</div>
+    <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+
     <div class="status">
-        NODE ID: <span id="node-id">...</span><br>
+        NODE ID: <span id="node-id"></span><br>
         SENT TO SERVER: <span id="server-status">WAITING</span><br>
         SENT TO NTFY: <span id="ntfy-status">OFF</span>
     </div>
 
-    <input type="text" id="ntfy-topic" placeholder="Personal ntfy.sh topic (optional)">
+    <input type="text" id="ntfy-topic" placeholder="Personal ntfy.sh topic (optional)" onchange="updateNtfyStatus()">
     <div class="label">Personal Alerts</div>
 
     <script>
@@ -52,6 +57,11 @@
             return x >= 0 ? r : 2 - r;
         }
 
+        function updateNtfyStatus() {
+            const topic = document.getElementById('ntfy-topic').value;
+            document.getElementById('ntfy-status').innerText = topic ? "ON (" + topic + ")" : "OFF";
+        }
+
         async function report(type, pVal) {
             document.getElementById('flash').style.display = 'block';
             setTimeout(() => document.getElementById('flash').style.display = 'none', 500);
@@ -61,7 +71,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ client_id: CLIENT_ID, test_type: type, p_value: pVal })
-            });
+            }).catch(console.error);
 
             // Personal Ntfy
             const topic = document.getElementById('ntfy-topic').value;
@@ -69,11 +79,16 @@
                 fetch(`https://ntfy.sh/${topic}`, {
                     method: 'POST',
                     body: `🚨 GlitchWatch Mobile: ${type.toUpperCase()} Detected (P=${pVal.toFixed(6)})`
-                });
+                }).catch(console.error);
             }
         }
 
         function analyze() {
+            // Update progress bar
+            const count = Math.min(bitBuffer.length, WINDOW_SIZE);
+            document.getElementById('bit-count').innerText = count;
+            document.getElementById('progress-fill').style.width = (count / WINDOW_SIZE * 100) + '%';
+
             if (bitBuffer.length < WINDOW_SIZE) return;
 
             // Monobit
@@ -96,27 +111,41 @@
         }
 
         function drip() {
-            const bytes = new Uint8Array(1);
+            // Generate 32 bytes (256 bits) per tick to fill the buffer faster
+            const bytes = new Uint8Array(32);
             window.crypto.getRandomValues(bytes);
-            const bits = bytes[0].toString(2).padStart(8, '0').split('').map(Number);
-            bitBuffer.push(...bits);
-            if (bitBuffer.length > WINDOW_SIZE) bitBuffer.shift();
+            for (let i = 0; i < bytes.length; i++) {
+                const bits = bytes[i].toString(2).padStart(8, '0').split('').map(Number);
+                bitBuffer.push(...bits);
+            }
+            if (bitBuffer.length > WINDOW_SIZE) bitBuffer.splice(0, bitBuffer.length - WINDOW_SIZE);
             
-            if (Math.random() < 0.1) analyze(); // Sparse analysis to save battery
-            setTimeout(drip, 1000);
+            analyze(); // Always update UI
+            setTimeout(drip, 500); // Check every half second
         }
 
-        // Heartbeat
-        setInterval(() => {
+        function sendHeartbeat() {
             fetch(`${SERVER_URL}/api/heartbeat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ client_id: CLIENT_ID })
-            }).then(() => {
-                document.getElementById('server-status').innerText = 'OK ' + new Date().toLocaleTimeString();
+            }).then(response => {
+                if(response.ok) {
+                    document.getElementById('server-status').innerText = 'OK ' + new Date().toLocaleTimeString();
+                } else {
+                    document.getElementById('server-status').innerText = 'ERR ' + response.status;
+                }
+            }).catch(err => {
+                document.getElementById('server-status').innerText = 'OFFLINE';
             });
-        }, 60000);
+        }
 
+        // Send initial heartbeat immediately
+        sendHeartbeat();
+        // Then every 60 seconds
+        setInterval(sendHeartbeat, 60000);
+
+        // Start generating bits
         drip();
     </script>
 </body>
