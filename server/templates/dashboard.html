@@ -99,6 +99,29 @@
                 // Update Map
                 markers.forEach(m => map.removeLayer(m));
                 markers = [];
+                
+                // 1. Draw Active Clients (Green)
+                if (data.clients_data) {
+                    data.clients_data.forEach(c => {
+                        let lat = c.latitude;
+                        let lon = c.longitude;
+                        let locName = c.country || 'Position Unknown';
+                        
+                        if (!lat && !lon) {
+                            lat = 30 + (Math.random() * 5 - 2.5);
+                            lon = -30 + (Math.random() * 5 - 2.5);
+                            locName = 'Position Unknown';
+                        }
+                        
+                        const m = L.circleMarker([lat, lon], {
+                            radius: 6, color: '#0f0', fillColor: '#0f0', fillOpacity: 0.3, weight: 1
+                        }).addTo(map)
+                        .bindPopup(`<b>ACTIVE NODE</b><br>[${(c.client_id || '').substring(0,8)}]<br>${locName}`);
+                        markers.push(m);
+                    });
+                }
+
+                // 2. Draw Anomalies (Red)
                 data.anomalies.forEach(a => {
                     const age = now - a.timestamp;
                     if (age <= mapWindowSeconds) {
@@ -106,17 +129,16 @@
                         let lon = a.longitude;
                         let locName = a.country || 'Position Unknown';
                         
-                        // If coordinates are 0,0 or null (localhost or failed lookup)
                         if (!lat && !lon) {
-                            lat = 30 + (Math.random() * 5 - 2.5); // Spread slightly in Mid-Atlantic
+                            lat = 30 + (Math.random() * 5 - 2.5);
                             lon = -30 + (Math.random() * 5 - 2.5);
                             locName = 'Position Unknown';
                         }
                         
                         const m = L.circleMarker([lat, lon], {
-                            radius: 8, color: '#f00', fillColor: '#f00', fillOpacity: 0.6
+                            radius: 8, color: '#f00', fillColor: '#f00', fillOpacity: 0.8, weight: 2
                         }).addTo(map)
-                        .bindPopup(`<b>${a.test_type.toUpperCase()}</b><br>[${(a.client_id || '').substring(0,8)}]<br>${locName}<br>${new Date(a.timestamp * 1000).toLocaleString()}<br>P=${a.p_value.toFixed(6)}`);
+                        .bindPopup(`<b>${a.test_type.toUpperCase()} GLITCH</b><br>[${(a.client_id || '').substring(0,8)}]<br>${locName}<br>${new Date(a.timestamp * 1000).toLocaleString()}<br>P=${a.p_value.toFixed(6)}`);
                         markers.push(m);
                     }
                 });

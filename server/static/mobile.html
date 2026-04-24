@@ -111,16 +111,32 @@
         }
 
         function drip() {
-            // Generate 32 bytes (256 bits) per tick to fill the buffer faster
-            const bytes = new Uint8Array(32);
-            window.crypto.getRandomValues(bytes);
-            for (let i = 0; i < bytes.length; i++) {
-                const bits = bytes[i].toString(2).padStart(8, '0').split('').map(Number);
-                bitBuffer.push(...bits);
+            try {
+                const bytes = new Uint8Array(32);
+                
+                // Fallback for insecure mobile browser contexts where crypto might be undefined
+                if (window.crypto && window.crypto.getRandomValues) {
+                    window.crypto.getRandomValues(bytes);
+                } else {
+                    for (let i = 0; i < 32; i++) {
+                        bytes[i] = Math.floor(Math.random() * 256);
+                    }
+                }
+
+                for (let i = 0; i < bytes.length; i++) {
+                    const bits = bytes[i].toString(2).padStart(8, '0').split('').map(Number);
+                    bitBuffer.push(...bits);
+                }
+                
+                if (bitBuffer.length > WINDOW_SIZE) {
+                    bitBuffer.splice(0, bitBuffer.length - WINDOW_SIZE);
+                }
+                
+                analyze(); // Always update UI
+            } catch (e) {
+                console.error("Generation error:", e);
+                document.getElementById('server-status').innerText = 'ERROR: ' + e.message;
             }
-            if (bitBuffer.length > WINDOW_SIZE) bitBuffer.splice(0, bitBuffer.length - WINDOW_SIZE);
-            
-            analyze(); // Always update UI
             setTimeout(drip, 500); // Check every half second
         }
 

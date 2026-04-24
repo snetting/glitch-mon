@@ -8,6 +8,7 @@ import uuid
 import httpx
 import uvicorn
 import os
+import asyncio
 
 app = FastAPI()
 
@@ -19,6 +20,14 @@ def init_db():
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS clients 
                  (client_id TEXT PRIMARY KEY, last_heartbeat REAL)''')
+    try:
+        c.execute("ALTER TABLE clients ADD COLUMN ip_address TEXT")
+        c.execute("ALTER TABLE clients ADD COLUMN latitude REAL")
+        c.execute("ALTER TABLE clients ADD COLUMN longitude REAL")
+        c.execute("ALTER TABLE clients ADD COLUMN country TEXT")
+    except sqlite3.OperationalError:
+        pass # Columns already exist
+        
     c.execute('''CREATE TABLE IF NOT EXISTS anomalies 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   timestamp REAL, 
@@ -59,21 +68,40 @@ async def get_geo_data(ip: str):
         pass
     return (0, 0, "Unknown")
 
-@app.post("/api/heartbeat")
-async def heartbeat(hb: Heartbeat):
+async def update_client_geo(client_id: str, ip: str):
+    lat, lon, country = await get_geo_data(ip)
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO clients (client_id, last_heartbeat) VALUES (?, ?)", 
-              (hb.client_id, time.time()))
+    # Ensure client still exists before updating
+    c.execute("UPDATE clients SET latitude=?, longitude=?, country=?, ip_address=? WHERE client_id=?", 
+              (lat, lon, country, ip, client_id))
+    conn.commit()
+    conn.close()
+
+@app.post("/api/heartbeat")
+async def heartbeat(hb: Heartbeat, request: Request, background_tasks: BackgroundTasks):
+    client_ip = request.headers.get("X-Forwarded-For", request.client.host)
+    
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT ip_address, latitude FROM clients WHERE client_id = ?", (hb.client_id,))
+    row = c.fetchone()
+    
+    if row and row[0] == client_ip and row[1] is not None:
+        c.execute("UPDATE clients SET last_heartbeat = ? WHERE client_id = ?", (time.time(), hb.client_id))
+    else:
+        # Insert/Update heartbeat immediately
+        c.execute("INSERT OR REPLACE INTO clients (client_id, last_heartbeat, ip_address, latitude, longitude, country) VALUES (?, ?, ?, COALESCE((SELECT latitude FROM clients WHERE client_id=?), NULL), COALESCE((SELECT longitude FROM clients WHERE client_id=?), NULL), COALESCE((SELECT country FROM clients WHERE client_id=?), NULL))", 
+                  (hb.client_id, time.time(), client_ip, hb.client_id, hb.client_id, hb.client_id))
+        background_tasks.add_task(update_client_geo, hb.client_id, client_ip)
+        
     conn.commit()
     conn.close()
     return {"status": "ok"}
 
 @app.post("/api/report")
 async def report(rep: Report, request: Request, background_tasks: BackgroundTasks):
-    client_ip = request.client.host
-    # If behind a proxy (like many cloud setups), we might need:
-    # client_ip = request.headers.get("X-Forwarded-For", request.client.host)
+    client_ip = request.headers.get("X-Forwarded-For", request.client.host)
     
     timestamp = time.time()
     lat, lon, country = await get_geo_data(client_ip)
@@ -96,8 +124,9 @@ async def get_stats():
     
     # Get active clients (heartbeat in last 5 minutes)
     five_mins_ago = time.time() - 300
-    c.execute("SELECT COUNT(*) as count FROM clients WHERE last_heartbeat > ?", (five_mins_ago,))
-    active_clients = c.fetchone()["count"]
+    c.execute("SELECT client_id, latitude, longitude, country FROM clients WHERE last_heartbeat > ?", (five_mins_ago,))
+    active_client_rows = c.fetchall()
+    clients_data = [dict(r) for r in active_client_rows]
     
     # Get recent anomalies (last 24 hours) - EXCLUDING ip_address for privacy
     one_day_ago = time.time() - 86400
@@ -107,7 +136,8 @@ async def get_stats():
     
     conn.close()
     return {
-        "active_clients": max(active_clients, 1),
+        "active_clients": len(clients_data) or 1, # default to 1 to prevent /0 in chart
+        "clients_data": clients_data,
         "anomalies": anomalies
     }
 
