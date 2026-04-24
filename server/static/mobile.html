@@ -39,18 +39,24 @@
     <div class="label">Personal Alerts</div>
 
     <script>
-        const SERVER_URL = window.location.origin;
-        const CLIENT_ID = 'mobile-' + Math.random().toString(36).substr(2, 9);
+        window.onerror = function(msg, url, line) {
+            var statusEl = document.getElementById('server-status');
+            if(statusEl) statusEl.innerText = 'JS ERR: ' + msg + ' @ ' + line;
+        };
+    </script>
+    <script>
+        var SERVER_URL = window.location.origin;
+        var CLIENT_ID = 'mobile-' + Math.random().toString(36).substr(2, 9);
         document.getElementById('node-id').innerText = CLIENT_ID;
 
-        let bitBuffer = [];
-        const WINDOW_SIZE = 1000;
-        const THRESHOLD = 0.01;
+        var bitBuffer = [];
+        var WINDOW_SIZE = 1000;
+        var THRESHOLD = 0.01;
 
         function erfc(x) {
-            const z = Math.abs(x);
-            const t = 1 / (1 + 0.5 * z);
-            const r = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 +
+            var z = Math.abs(x);
+            var t = 1 / (1 + 0.5 * z);
+            var r = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 +
                 t * (0.37409196 + t * (0.09678418 + t * (-0.18628806 +
                 t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 +
                 t * (-0.82215223 + t * 0.17087277))))))))));
@@ -58,52 +64,58 @@
         }
 
         function updateNtfyStatus() {
-            const topic = document.getElementById('ntfy-topic').value;
+            var topic = document.getElementById('ntfy-topic').value;
             document.getElementById('ntfy-status').innerText = topic ? "ON (" + topic + ")" : "OFF";
         }
 
-        async function report(type, pVal) {
+        function report(type, pVal) {
             document.getElementById('flash').style.display = 'block';
-            setTimeout(() => document.getElementById('flash').style.display = 'none', 500);
+            setTimeout(function() { document.getElementById('flash').style.display = 'none'; }, 500);
 
             // Central Report
-            fetch(`${SERVER_URL}/api/report`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ client_id: CLIENT_ID, test_type: type, p_value: pVal })
-            }).catch(console.error);
+            if (window.fetch) {
+                fetch(SERVER_URL + '/api/report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ client_id: CLIENT_ID, test_type: type, p_value: pVal })
+                }).catch(function(e){});
+            }
 
             // Personal Ntfy
-            const topic = document.getElementById('ntfy-topic').value;
-            if (topic) {
-                fetch(`https://ntfy.sh/${topic}`, {
+            var topic = document.getElementById('ntfy-topic').value;
+            if (topic && window.fetch) {
+                fetch('https://ntfy.sh/' + topic, {
                     method: 'POST',
-                    body: `🚨 GlitchWatch Mobile: ${type.toUpperCase()} Detected (P=${pVal.toFixed(6)})`
-                }).catch(console.error);
+                    body: '🚨 GlitchWatch Mobile: ' + type.toUpperCase() + ' Detected (P=' + pVal.toFixed(6) + ')'
+                }).catch(function(e){});
             }
         }
 
         function analyze() {
-            // Update progress bar
-            const count = Math.min(bitBuffer.length, WINDOW_SIZE);
+            var count = Math.min(bitBuffer.length, WINDOW_SIZE);
             document.getElementById('bit-count').innerText = count;
             document.getElementById('progress-fill').style.width = (count / WINDOW_SIZE * 100) + '%';
 
             if (bitBuffer.length < WINDOW_SIZE) return;
 
             // Monobit
-            const s = bitBuffer.reduce((a, b) => a + (b === 1 ? 1 : -1), 0);
-            const sObs = Math.abs(s) / Math.sqrt(WINDOW_SIZE);
-            const pMonobit = erfc(sObs / Math.sqrt(2));
+            var s = 0;
+            var sum = 0;
+            for (var i = 0; i < WINDOW_SIZE; i++) {
+                s += (bitBuffer[i] === 1 ? 1 : -1);
+                sum += bitBuffer[i];
+            }
+            var sObs = Math.abs(s) / Math.sqrt(WINDOW_SIZE);
+            var pMonobit = erfc(sObs / Math.sqrt(2));
             document.getElementById('monobit-p').innerText = pMonobit.toFixed(4);
 
             // Runs
-            const pi = bitBuffer.reduce((a, b) => a + b, 0) / WINDOW_SIZE;
-            let vObs = 1;
-            for (let i = 0; i < WINDOW_SIZE - 1; i++) {
-                if (bitBuffer[i] !== bitBuffer[i+1]) vObs++;
+            var pi = sum / WINDOW_SIZE;
+            var vObs = 1;
+            for (var j = 0; j < WINDOW_SIZE - 1; j++) {
+                if (bitBuffer[j] !== bitBuffer[j+1]) vObs++;
             }
-            const pRuns = erfc(Math.abs(vObs - 2 * WINDOW_SIZE * pi * (1 - pi)) / (2 * Math.sqrt(2 * WINDOW_SIZE) * pi * (1 - pi)));
+            var pRuns = erfc(Math.abs(vObs - 2 * WINDOW_SIZE * pi * (1 - pi)) / (2 * Math.sqrt(2 * WINDOW_SIZE) * pi * (1 - pi)));
             document.getElementById('runs-p').innerText = pRuns.toFixed(4);
 
             if (pMonobit < THRESHOLD) { report('monobit', pMonobit); bitBuffer = []; }
@@ -112,56 +124,57 @@
 
         function drip() {
             try {
-                const bytes = new Uint8Array(32);
-                
-                // Fallback for insecure mobile browser contexts where crypto might be undefined
+                var bytes = new Uint8Array(32);
                 if (window.crypto && window.crypto.getRandomValues) {
                     window.crypto.getRandomValues(bytes);
                 } else {
-                    for (let i = 0; i < 32; i++) {
-                        bytes[i] = Math.floor(Math.random() * 256);
+                    for (var k = 0; k < 32; k++) {
+                        bytes[k] = Math.floor(Math.random() * 256);
                     }
                 }
 
-                for (let i = 0; i < bytes.length; i++) {
-                    const bits = bytes[i].toString(2).padStart(8, '0').split('').map(Number);
-                    bitBuffer.push(...bits);
+                for (var i = 0; i < bytes.length; i++) {
+                    var bin = bytes[i].toString(2);
+                    while (bin.length < 8) bin = '0' + bin;
+                    for (var b = 0; b < 8; b++) {
+                        bitBuffer.push(parseInt(bin.charAt(b), 10));
+                    }
                 }
                 
                 if (bitBuffer.length > WINDOW_SIZE) {
                     bitBuffer.splice(0, bitBuffer.length - WINDOW_SIZE);
                 }
                 
-                analyze(); // Always update UI
+                analyze();
             } catch (e) {
-                console.error("Generation error:", e);
-                document.getElementById('server-status').innerText = 'ERROR: ' + e.message;
+                var el = document.getElementById('server-status');
+                if(el) el.innerText = 'ERROR: ' + e.message;
             }
-            setTimeout(drip, 500); // Check every half second
+            setTimeout(drip, 500);
         }
 
         function sendHeartbeat() {
-            fetch(`${SERVER_URL}/api/heartbeat`, {
+            if (!window.fetch) {
+                document.getElementById('server-status').innerText = 'ERR: No Fetch API';
+                return;
+            }
+            fetch(SERVER_URL + '/api/heartbeat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ client_id: CLIENT_ID })
-            }).then(response => {
+            }).then(function(response) {
                 if(response.ok) {
                     document.getElementById('server-status').innerText = 'OK ' + new Date().toLocaleTimeString();
                 } else {
                     document.getElementById('server-status').innerText = 'ERR ' + response.status;
                 }
-            }).catch(err => {
+            }).catch(function(err) {
                 document.getElementById('server-status').innerText = 'OFFLINE';
             });
         }
 
-        // Send initial heartbeat immediately
         sendHeartbeat();
-        // Then every 60 seconds
         setInterval(sendHeartbeat, 60000);
-
-        // Start generating bits
         drip();
     </script>
 </body>
