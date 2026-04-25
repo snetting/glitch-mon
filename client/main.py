@@ -17,10 +17,10 @@ NTFY_URL = f"https://ntfy.sh/{NTFY_TOPIC}" if NTFY_TOPIC else None
 SERVER_URL = os.environ.get("SERVER_URL", "http://localhost:8000")
 CLIENT_ID = str(uuid.uuid4())
 
-WINDOW_SIZE = 1000     # Number of bits in the rolling window
-CHECK_INTERVAL = 1     # Add new bits every 1 second
-ANALYSIS_INTERVAL = 10 # Run statistical tests every 10 seconds
-THRESHOLD = 0.01       # P-value threshold
+WINDOW_SIZE = 10000    # Increased for better statistical significance
+CHECK_INTERVAL = 1      # Add new bits every 1 second
+ANALYSIS_INTERVAL = 60  # Run statistical tests every 60 seconds (more independent)
+THRESHOLD = 1e-6        # Much stricter p-value threshold (1 in a million)
 
 def send_notification(message, is_alert=True, test_type=None, p_value=None):
     prefix = "🚨 " if is_alert else "ℹ️ "
@@ -84,7 +84,9 @@ def main():
     bit_buffer = deque(maxlen=WINDOW_SIZE)
     last_analysis_time = time.time()
     
+    buffer_ready = False
     try:
+        print(f"Waiting for buffer to fill ({WINDOW_SIZE} bits)...")
         while True:
             new_val = secrets.randbits(8)
             bits = format(new_val, '08b')
@@ -93,6 +95,9 @@ def main():
             
             current_time = time.time()
             if len(bit_buffer) >= WINDOW_SIZE and (current_time - last_analysis_time) >= ANALYSIS_INTERVAL:
+                if not buffer_ready:
+                    print("Buffer full. Monitoring active.")
+                    buffer_ready = True
                 p_monobit = monobit_test(list(bit_buffer))
                 p_runs = runs_test(list(bit_buffer))
                 last_analysis_time = current_time
