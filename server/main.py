@@ -108,10 +108,16 @@ async def report(rep: Report, request: Request, background_tasks: BackgroundTask
     
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+    # Log the anomaly
     c.execute('''INSERT INTO anomalies 
                  (timestamp, client_id, test_type, p_value, ip_address, latitude, longitude, country) 
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
               (timestamp, rep.client_id, rep.test_type, rep.p_value, client_ip, lat, lon, country))
+    
+    # Also update/insert the client heartbeat so they appear active immediately
+    c.execute("INSERT OR REPLACE INTO clients (client_id, last_heartbeat, ip_address, latitude, longitude, country) VALUES (?, ?, ?, ?, ?, ?)", 
+              (rep.client_id, timestamp, client_ip, lat, lon, country))
+    
     conn.commit()
     conn.close()
     return {"status": "ok"}
