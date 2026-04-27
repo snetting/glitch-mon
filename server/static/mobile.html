@@ -14,6 +14,9 @@
         .glitch-flash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #f00; display: none; opacity: 0.5; pointer-events: none; }
         .progress-bar { width: 80%; border: 1px solid #0f0; height: 10px; margin: 10px auto; background: #000; }
         .progress-fill { height: 100%; background: #0f0; width: 0%; transition: width 0.2s; }
+        .info-toggle { margin-top: 20px; font-size: 0.7em; color: #080; text-decoration: underline; cursor: pointer; }
+        #info-content { display: none; font-size: 0.7em; text-align: left; margin-top: 10px; border-top: 1px solid #030; padding-top: 10px; color: #0c0; }
+        #info-content h3 { font-size: 1.1em; margin: 10px 0 5px; color: #0f0; text-transform: uppercase; }
     </style>
 </head>
 <body>
@@ -38,7 +41,22 @@
     <input type="text" id="ntfy-topic" placeholder="Personal ntfy.sh topic (optional)" onchange="updateNtfyStatus()">
     <div class="label">Personal Alerts</div>
 
+    <div class="info-toggle" onclick="toggleInfo()">About the Experiment</div>
+    <div id="info-content">
+        <h3>The Experiment</h3>
+        Investigating if significant real-world events correlate with shifts in local entropy—detecting "glitches in the matrix."
+        <h3>Monobit (Bias)</h3>
+        Measures distributional balance. A "glitch" suggests a shift in the fundamental randomness of reality at your location.
+        <h3>Runs (Patterns)</h3>
+        Detects emergent structure or hidden order. Tracks if local randomness exhibits non-local synchronization during high-impact events.
+    </div>
+
     <script>
+        function toggleInfo() {
+            var content = document.getElementById('info-content');
+            content.style.display = (content.style.display === 'block') ? 'none' : 'block';
+        }
+
         window.onerror = function(msg, url, line) {
             var statusEl = document.getElementById('server-status');
             if(statusEl) statusEl.innerText = 'JS ERR: ' + msg + ' @ ' + line;
