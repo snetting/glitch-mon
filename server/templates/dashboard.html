@@ -25,6 +25,12 @@
         .glitch-list { height: 350px; overflow-y: auto; font-size: 0.8em; }
         .glitch-item { border-bottom: 1px solid #030; padding: 5px 0; }
         .active-count { font-size: 2em; text-align: center; color: #fff; }
+        .info-section { grid-column: span 2; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; border-top: 1px solid #030; padding-top: 20px; }
+        .info-card { border: 1px solid #030; padding: 15px; font-size: 0.85em; line-height: 1.4; background: #020202; }
+        .info-card h3 { color: #0f0; margin-top: 0; text-transform: uppercase; border-bottom: 1px solid #030; padding-bottom: 5px; }
+        .mobile-link { grid-column: span 2; text-align: center; border: 1px dashed #0f0; padding: 20px; margin-top: 10px; background: #0a0a0a; }
+        .mobile-link a { color: #0f0; font-weight: bold; text-decoration: none; border: 1px solid #0f0; padding: 10px 20px; display: inline-block; }
+        .mobile-link a:hover { background: #0f0; color: #000; }
     </style>
 </head>
 <body>
@@ -47,6 +53,23 @@
         </div>
         <div class="chart-container">
             <canvas id="correlationChart"></canvas>
+        </div>
+
+        <div class="info-section">
+            <div class="info-card">
+                <h3>Monobit Test</h3>
+                Checks the proportion of zeros and ones in the entropy stream. A significant deviation from a 50/50 split indicates a <b>bias</b> in the random source, suggesting the underlying physics or hardware may be compromised or experiencing interference.
+            </div>
+            <div class="info-card">
+                <h3>Runs Test</h3>
+                Analyzes the frequency of "runs" (consecutive identical bits). This detects <b>hidden patterns</b> or oscillations that the Monobit test might miss. It ensures the sequence is not just balanced, but truly unpredictable and non-repetitive.
+            </div>
+        </div>
+
+        <div class="mobile-link">
+            <p>Help monitor the field from your location!</p>
+            <a href="/static/mobile.html" target="_blank">OPEN MOBILE MONITOR (PWA)</a>
+            <p style="font-size: 0.7em; margin-top: 10px; color: #080;">Scan or open this link on your mobile device to contribute entropy to the global network.</p>
         </div>
     </div>
 
