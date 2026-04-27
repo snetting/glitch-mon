@@ -49,15 +49,23 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 class Heartbeat(BaseModel):
     client_id: str
+    latitude: float = None
+    longitude: float = None
+    country: str = None
+    ip_address: str = None
 
 class Report(BaseModel):
     client_id: str
     test_type: str
     p_value: float
+    latitude: float = None
+    longitude: float = None
+    country: str = None
+    ip_address: str = None
 
 async def get_geo_data(ip: str):
     # Free API for IP Geolocation
-    if ip == "127.0.0.1": return (0, 0, "Localhost")
+    if not ip or ip in ["127.0.0.1", "Unknown"]: return (0, 0, "Localhost")
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(f"http://ip-api.com/json/{ip}")
@@ -68,8 +76,10 @@ async def get_geo_data(ip: str):
         pass
     return (0, 0, "Unknown")
 
-async def update_client_geo(client_id: str, ip: str):
-    lat, lon, country = await get_geo_data(ip)
+async def update_client_geo(client_id: str, ip: str, lat=None, lon=None, country=None):
+    if lat is None or lon is None:
+        lat, lon, country = await get_geo_data(ip)
+    
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     # Ensure client still exists before updating
@@ -80,20 +90,27 @@ async def update_client_geo(client_id: str, ip: str):
 
 @app.post("/api/heartbeat")
 async def heartbeat(hb: Heartbeat, request: Request, background_tasks: BackgroundTasks):
-    client_ip = request.headers.get("X-Forwarded-For", request.client.host)
+    client_ip = hb.ip_address or request.headers.get("X-Forwarded-For", request.client.host)
     
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT ip_address, latitude FROM clients WHERE client_id = ?", (hb.client_id,))
     row = c.fetchone()
     
-    if row and row[0] == client_ip and row[1] is not None:
+    # If we already have the client and the IP hasn't changed, just update heartbeat time
+    if row and row[0] == client_ip and row[1] is not None and hb.latitude is None:
         c.execute("UPDATE clients SET last_heartbeat = ? WHERE client_id = ?", (time.time(), hb.client_id))
     else:
         # Insert/Update heartbeat immediately
-        c.execute("INSERT OR REPLACE INTO clients (client_id, last_heartbeat, ip_address, latitude, longitude, country) VALUES (?, ?, ?, COALESCE((SELECT latitude FROM clients WHERE client_id=?), NULL), COALESCE((SELECT longitude FROM clients WHERE client_id=?), NULL), COALESCE((SELECT country FROM clients WHERE client_id=?), NULL))", 
-                  (hb.client_id, time.time(), client_ip, hb.client_id, hb.client_id, hb.client_id))
-        background_tasks.add_task(update_client_geo, hb.client_id, client_ip)
+        lat = hb.latitude
+        lon = hb.longitude
+        country = hb.country
+        
+        c.execute("INSERT OR REPLACE INTO clients (client_id, last_heartbeat, ip_address, latitude, longitude, country) VALUES (?, ?, ?, ?, ?, ?)", 
+                  (hb.client_id, time.time(), client_ip, lat, lon, country))
+        
+        if lat is None:
+            background_tasks.add_task(update_client_geo, hb.client_id, client_ip)
         
     conn.commit()
     conn.close()
@@ -101,10 +118,13 @@ async def heartbeat(hb: Heartbeat, request: Request, background_tasks: Backgroun
 
 @app.post("/api/report")
 async def report(rep: Report, request: Request, background_tasks: BackgroundTasks):
-    client_ip = request.headers.get("X-Forwarded-For", request.client.host)
+    client_ip = rep.ip_address or request.headers.get("X-Forwarded-For", request.client.host)
     
     timestamp = time.time()
-    lat, lon, country = await get_geo_data(client_ip)
+    lat, lon, country = rep.latitude, rep.longitude, rep.country
+    
+    if lat is None:
+        lat, lon, country = await get_geo_data(client_ip)
     
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
