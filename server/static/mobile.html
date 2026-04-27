@@ -26,7 +26,7 @@
     <div id="runs-p" class="p-val" style="margin-top:20px;">Wait...</div>
     <div class="label">Runs (Pattern)</div>
 
-    <div class="label" style="margin-top: 15px;">Buffer (<span id="bit-count">0</span>/1000 bits)</div>
+    <div class="label" style="margin-top: 15px;">Buffer (<span id="bit-count">0</span>/10000 bits)</div>
     <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
 
     <div class="status">
@@ -50,8 +50,8 @@
         document.getElementById('node-id').innerText = CLIENT_ID;
 
         var bitBuffer = [];
-        var WINDOW_SIZE = 1000;
-        var THRESHOLD = 0.01;
+        var WINDOW_SIZE = 10000;
+        var THRESHOLD = 0.000001;
 
         function erfc(x) {
             var z = Math.abs(x);
