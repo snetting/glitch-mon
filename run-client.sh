@@ -1,5 +1,5 @@
 #!/bin/bash
-# run-client-podman.sh - Run a client node (works with podman or docker)
+# run-client.sh - Run a client node using podman or docker
 
 if command -v podman &> /dev/null; then
     echo "Using podman kube play..."
@@ -20,4 +20,4 @@ else
     exit 1
 fi
 
-echo "Client deployed."
+echo "Client deployment attempted."
