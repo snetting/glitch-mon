@@ -28,6 +28,11 @@ def init_db():
     except sqlite3.OperationalError:
         pass # Columns already exist
         
+    try:
+        c.execute("ALTER TABLE anomalies ADD COLUMN detected_words TEXT")
+    except sqlite3.OperationalError:
+        pass
+
     c.execute('''CREATE TABLE IF NOT EXISTS anomalies 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   timestamp REAL, 
@@ -37,7 +42,8 @@ def init_db():
                   ip_address TEXT, 
                   latitude REAL, 
                   longitude REAL, 
-                  country TEXT)''')
+                  country TEXT,
+                  detected_words TEXT)''')
     conn.commit()
     conn.close()
 
@@ -62,6 +68,7 @@ class Report(BaseModel):
     longitude: float = None
     country: str = None
     ip_address: str = None
+    detected_words: str = None
 
 async def get_geo_data(ip: str):
     # Free API for IP Geolocation
@@ -130,9 +137,9 @@ async def report(rep: Report, request: Request, background_tasks: BackgroundTask
     c = conn.cursor()
     # Log the anomaly
     c.execute('''INSERT INTO anomalies 
-                 (timestamp, client_id, test_type, p_value, ip_address, latitude, longitude, country) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-              (timestamp, rep.client_id, rep.test_type, rep.p_value, client_ip, lat, lon, country))
+                 (timestamp, client_id, test_type, p_value, ip_address, latitude, longitude, country, detected_words) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+              (timestamp, rep.client_id, rep.test_type, rep.p_value, client_ip, lat, lon, country, rep.detected_words))
     
     # Also update/insert the client heartbeat so they appear active immediately
     c.execute("INSERT OR REPLACE INTO clients (client_id, last_heartbeat, ip_address, latitude, longitude, country) VALUES (?, ?, ?, ?, ?, ?)", 
@@ -156,7 +163,7 @@ async def get_stats():
     
     # Get recent anomalies (last 24 hours) - EXCLUDING ip_address for privacy
     one_day_ago = time.time() - 86400
-    c.execute("SELECT id, timestamp, client_id, test_type, p_value, latitude, longitude, country FROM anomalies WHERE timestamp > ? ORDER BY timestamp DESC", (one_day_ago,))
+    c.execute("SELECT id, timestamp, client_id, test_type, p_value, latitude, longitude, country, detected_words FROM anomalies WHERE timestamp > ? ORDER BY timestamp DESC", (one_day_ago,))
     rows = c.fetchall()
     anomalies = [dict(r) for r in rows]
     

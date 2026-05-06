@@ -104,7 +104,7 @@
             if (topic && window.fetch) {
                 fetch('https://ntfy.sh/' + topic, {
                     method: 'POST',
-                    body: '🚨 GlitchWatch Mobile: ' + type.toUpperCase() + ' Detected (P=' + pVal.toFixed(6) + ')'
+                    body: '🚨 GlitchWatch Mobile: ' + type.toUpperCase() + ' Detected (P=' + pVal.toExponential(2) + ')'
                 }).catch(function(e){});
             }
         }
@@ -125,7 +125,7 @@
             }
             var sObs = Math.abs(s) / Math.sqrt(WINDOW_SIZE);
             var pMonobit = erfc(sObs / Math.sqrt(2));
-            document.getElementById('monobit-p').innerText = pMonobit.toFixed(4);
+            document.getElementById('monobit-p').innerText = pMonobit.toExponential(2);
 
             // Runs
             var pi = sum / WINDOW_SIZE;
@@ -134,7 +134,7 @@
                 if (bitBuffer[j] !== bitBuffer[j+1]) vObs++;
             }
             var pRuns = erfc(Math.abs(vObs - 2 * WINDOW_SIZE * pi * (1 - pi)) / (2 * Math.sqrt(2 * WINDOW_SIZE) * pi * (1 - pi)));
-            document.getElementById('runs-p').innerText = pRuns.toFixed(4);
+            document.getElementById('runs-p').innerText = pRuns.toExponential(2);
 
             if (pMonobit < THRESHOLD) { report('monobit', pMonobit); bitBuffer = []; }
             else if (pRuns < THRESHOLD) { report('runs', pRuns); bitBuffer = []; }

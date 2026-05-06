@@ -20,10 +20,14 @@
             background: #000; color: #0f0; border: 1px solid #080; cursor: pointer; margin: 0 2px;
         }
         .map-controls button.active { background: #0f0; color: #000; }
-        .stats-panel { border: 1px solid #0f0; padding: 15px; background: #050505; }
+        .stats-panel { border: 1px solid #0f0; padding: 15px; background: #050505; display: flex; flex-direction: column; }
         .chart-container { grid-column: span 2; height: 300px; border: 1px solid #0f0; padding: 10px; }
-        .glitch-list { height: 350px; overflow-y: auto; font-size: 0.8em; }
+        .glitch-list { flex-grow: 1; overflow-y: auto; font-size: 0.8em; margin-top: 10px; border-top: 1px solid #030; }
+        .word-panel { grid-column: span 2; border: 1px solid #0f0; padding: 15px; background: #050505; margin-top: 10px; }
+        .word-cloud { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        .word-tag { background: #030; color: #0f0; padding: 2px 8px; border: 1px solid #0f0; font-size: 0.9em; text-transform: uppercase; }
         .glitch-item { border-bottom: 1px solid #030; padding: 5px 0; }
+        .glitch-item .words { color: #fff; font-weight: bold; display: block; margin-top: 2px; }
         .active-count { font-size: 2em; text-align: center; color: #fff; }
         .info-section { grid-column: span 2; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; border-top: 1px solid #030; padding-top: 20px; }
         .info-card { border: 1px solid #030; padding: 15px; font-size: 0.85em; line-height: 1.4; background: #020202; }
@@ -53,6 +57,13 @@
         </div>
         <div class="chart-container">
             <canvas id="correlationChart"></canvas>
+        </div>
+
+        <div class="word-panel">
+            <div style="text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; border-bottom: 1px solid #030;">Captured Word Fragments (Matrix Leakage)</div>
+            <div id="word-cloud" class="word-cloud">
+                <span style="color: #030;">Waiting for anomalies...</span>
+            </div>
         </div>
 
         <div class="info-section">
@@ -161,22 +172,38 @@
                         const m = L.circleMarker([lat, lon], {
                             radius: 8, color: '#f00', fillColor: '#f00', fillOpacity: 0.8, weight: 2
                         }).addTo(map)
-                        .bindPopup(`<b>${a.test_type.toUpperCase()} GLITCH</b><br>[${(a.client_id || '').substring(0,8)}]<br>${locName}<br>${new Date(a.timestamp * 1000).toLocaleString()}<br>P=${a.p_value.toFixed(6)}`);
+                        .bindPopup(`<b>${a.test_type.toUpperCase()} GLITCH</b><br>[${(a.client_id || '').substring(0,8)}]<br>${locName}<br>${new Date(a.timestamp * 1000).toLocaleString()}<br>P=${a.p_value.toExponential(2)}`);
                         markers.push(m);
                     }
                 });
 
-                // Update List
+                // Update List and Word Cloud
                 const list = document.getElementById('glitch-list');
+                const cloud = document.getElementById('word-cloud');
+                const allWords = [];
+
                 list.innerHTML = data.anomalies.map(a => {
                     const locName = (!a.latitude && !a.longitude) || a.country === 'Localhost' ? 'Position Unknown' : a.country;
+                    const wordStr = a.detected_words ? `<span class="words">WORDS: ${a.detected_words}</span>` : '';
+                    if (a.detected_words) {
+                        a.detected_words.split(',').forEach(w => allWords.push(w.trim()));
+                    }
                     return `
                     <div class="glitch-item">
                         [${new Date(a.timestamp * 1000).toLocaleTimeString()}] [${(a.client_id || 'Unknown').substring(0,8)}] ${locName}: 
-                        ${a.test_type.toUpperCase()} (P=${a.p_value.toFixed(4)})
+                        ${a.test_type.toUpperCase()} (P=${a.p_value.toExponential(2)})
+                        ${wordStr}
                     </div>
                     `;
                 }).join('');
+
+                if (allWords.length > 0) {
+                    // Deduplicate and filter to last 24h words if necessary, but allWords is already from data.anomalies
+                    const uniqueWords = [...new Set(allWords)].slice(0, 50); // Show top 50 unique
+                    cloud.innerHTML = uniqueWords.map(w => `<span class="word-tag">${w}</span>`).join('');
+                } else {
+                    cloud.innerHTML = '<span style="color: #030;">Waiting for anomalies...</span>';
+                }
 
                 // Update Chart (10-minute correlation windows)
                 const windowSize = 600; // 10 minutes
