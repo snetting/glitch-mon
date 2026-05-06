@@ -179,4 +179,5 @@ async def dashboard(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request})
 
 if __name__ == "__main__":
+    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] SUCCESSFUL START: Randomness Monitor Server active on port 8000.", flush=True)
     uvicorn.run(app, host="0.0.0.0", port=8000)

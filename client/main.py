@@ -31,6 +31,10 @@ THRESHOLD = 1e-6        # Much stricter p-value threshold (1 in a million)
 DICTIONARY = set()
 DICTIONARY_LOADED = False
 
+def log(message):
+    timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+    print(f"[{timestamp}] {message}", flush=True)
+
 def load_system_dictionary():
     global DICTIONARY, DICTIONARY_LOADED
     paths = ["/usr/share/dict/words", "/usr/share/dict/american-english", "/usr/share/dict/british-english"]
@@ -41,15 +45,15 @@ def load_system_dictionary():
                     # Load words of length 5+ to ensure significance
                     DICTIONARY = {line.strip().lower() for line in f if len(line.strip()) >= 5}
                 DICTIONARY_LOADED = True
-                print(f"    Loaded {len(DICTIONARY)} words from {path}")
+                log(f"SYSTEM DICTIONARY FOUND: Loaded {len(DICTIONARY)} words from {path}")
                 return
             except Exception as e:
-                print(f"    Error loading dictionary {path}: {e}")
+                log(f"ERROR: Could not load dictionary {path}: {e}")
     
     # Fallback to a tiny essential list if no system dict found
     if not DICTIONARY_LOADED:
         DICTIONARY = {"matrix", "glitch", "entropy", "signal", "reality", "vortex", "system"}
-        print("    Warning: No system dictionary found. Using minimal fallback.")
+        log("WARNING: No system dictionary found. Falling back to minimal internal wordlist.")
 
 def get_local_ip():
     try:
@@ -74,7 +78,7 @@ def fetch_public_location():
             is_local = True
 
     if is_local:
-        print(f"    Local IP detected ({local_ip}), fetching public identity...")
+        log(f"LOCAL IP DETECTED ({local_ip}), fetching public identity...")
         try:
             resp = requests.get("http://ip-api.com/json/", timeout=5)
             data = resp.json()
@@ -85,9 +89,9 @@ def fetch_public_location():
                     "country": data.get("country", "Position Unknown"),
                     "ip_address": data.get("query", "Unknown")
                 }
-                print(f"    Public Identity: {CLIENT_LOCATION['ip_address']} ({CLIENT_LOCATION['country']})")
+                log(f"PUBLIC IDENTITY: {CLIENT_LOCATION['ip_address']} ({CLIENT_LOCATION['country']})")
         except Exception as e:
-            print(f"    Failed to fetch public IP/location: {e}")
+            log(f"ERROR: Failed to fetch public IP/location: {e}")
 
 def scan_for_words(bit_buffer):
     """
@@ -144,10 +148,9 @@ def send_notification(message, is_alert=True, test_type=None, p_value=None, dete
     prefix = "🚨 " if is_alert else "ℹ️ "
     full_message = f"{prefix}Randomness Monitor: {message}"
     if detected_words:
-        full_message += f" | WORDS: {', '.join(detected_words)}"
+        full_message += f" | WORDS CAPTURED: {', '.join(detected_words)}"
     
-    timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-    print(f"[{timestamp}] [!] {full_message}")
+    log(f"[!] {full_message}")
     
     # 1. Local/Ntfy Notification (Optional)
     if NTFY_URL:
@@ -171,7 +174,7 @@ def send_notification(message, is_alert=True, test_type=None, p_value=None, dete
             payload.update(CLIENT_LOCATION)
             requests.post(f"{SERVER_URL}/api/report", json=payload, timeout=5)
         except Exception as e:
-            print(f"    Failed to report to central server: {e}")
+            log(f"ERROR: Failed to report to central server: {e}")
 
 def heartbeat_thread():
     while True:
@@ -179,7 +182,7 @@ def heartbeat_thread():
             payload = {"client_id": CLIENT_ID}
             payload.update(CLIENT_LOCATION)
             requests.post(f"{SERVER_URL}/api/heartbeat", json=payload, timeout=5)
-        except:
+        except Exception as e:
             pass
         time.sleep(60) # Every minute
 
@@ -210,15 +213,15 @@ def main():
     # Start heartbeat background thread
     threading.Thread(target=heartbeat_thread, daemon=True).start()
     
-    send_notification("Monitoring Started (Distributed Node)", is_alert=False)
-    print(f"Node ID: {CLIENT_ID}")
+    log("SUCCESSFUL START: Randomness Monitor active and reporting.")
+    log(f"NODE ID: {CLIENT_ID}")
     
     bit_buffer = deque(maxlen=WINDOW_SIZE)
     last_analysis_time = time.time()
     
     buffer_ready = False
     try:
-        print(f"Waiting for buffer to fill ({WINDOW_SIZE} bits)...")
+        log(f"INITIALIZING: Waiting for entropy buffer to fill ({WINDOW_SIZE} bits)...")
         while True:
             new_val = secrets.randbits(8)
             bits = format(new_val, '08b')
@@ -228,20 +231,20 @@ def main():
             current_time = time.time()
             if len(bit_buffer) >= WINDOW_SIZE and (current_time - last_analysis_time) >= ANALYSIS_INTERVAL:
                 if not buffer_ready:
-                    print("Buffer full. Monitoring active.")
+                    log("BUFFER READY: Real-time statistical monitoring active.")
                     buffer_ready = True
                 p_monobit = monobit_test(list(bit_buffer))
                 p_runs = runs_test(list(bit_buffer))
                 last_analysis_time = current_time
                 
                 if int(current_time) % 60 == 0:
-                    print(f"[{time.strftime('%H:%M:%S')}] P-Values: Monobit={p_monobit:.2e}, Runs={p_runs:.2e}")
+                    log(f"STATUS: P-Values: Monobit={p_monobit:.2e}, Runs={p_runs:.2e}")
 
                 if p_monobit < THRESHOLD or p_runs < THRESHOLD:
                     test_type = "monobit" if p_monobit < THRESHOLD else "runs"
                     p_val = p_monobit if p_monobit < THRESHOLD else p_runs
                     
-                    print(f"    Anomaly Detected (P={p_val:.2e}). Running intensive word scan...")
+                    log(f"GLITCH DETECTED: P={p_val:.2e}. Executing intensive word-fragment scan...")
                     words = scan_for_words(bit_buffer)
                     
                     msg = f"GLITCH: {test_type.upper()} Detected (P={p_val:.2e})"
@@ -251,7 +254,7 @@ def main():
 
             time.sleep(CHECK_INTERVAL)
     except KeyboardInterrupt:
-        print("\nStopping...")
+        log("STOPPING: Monitoring terminated by user.")
     finally:
         send_notification("Monitoring Stopped", is_alert=False)
 
