@@ -113,8 +113,10 @@ def scan_for_words(bit_buffer):
         yield raw_data
         # 2. Inverted
         yield bytes([b ^ 0xFF for b in raw_data])
-        # 3. Bit-Reversed
+        # 3. Bit-Reversed (per byte)
         yield bytes([int(format(b, '08b')[::-1], 2) for b in raw_data])
+        # 4. Backwards (full byte array reversal)
+        yield raw_data[::-1]
 
     printable = set(string.ascii_letters.encode('ascii'))
     
