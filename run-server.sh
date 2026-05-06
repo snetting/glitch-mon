@@ -12,8 +12,13 @@ fi
 
 PORT=${SERVER_PORT:-8002}
 
-# Stop and remove existing container if it exists
-$DOCKER_CMD rm -f glitch-server 2>/dev/null || true
+# Stop and remove existing container if it exists (Docker doesn't support --replace)
+if [ "$DOCKER_CMD" = "docker" ]; then
+    $DOCKER_CMD rm -f glitch-server 2>/dev/null || true
+    REPLACE_FLAG=""
+else
+    REPLACE_FLAG="--replace"
+fi
 
 # Ensure the DB file exists before mounting to avoid Docker creating a directory
 touch ./server/anomalies.db
@@ -23,6 +28,7 @@ echo "Using $DOCKER_CMD for server..."
 echo "Starting Server on port $PORT..."
 $DOCKER_CMD run -d \
   --name glitch-server \
+  $REPLACE_FLAG \
   -p $PORT:8000 \
   -v "$(pwd)/server/anomalies.db:/app/anomalies.db" \
   --restart unless-stopped \

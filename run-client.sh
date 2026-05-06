@@ -3,7 +3,12 @@
 
 if command -v podman &> /dev/null; then
     echo "Using podman kube play..."
-    podman kube play deploy/glitch-client-kube.yaml
+    # Attempt to use --replace for kube play (available in newer Podman)
+    # If it fails, fallback to a manual down/play sequence
+    if ! podman kube play --replace deploy/glitch-client-kube.yaml 2>/dev/null; then
+        podman kube down deploy/glitch-client-kube.yaml 2>/dev/null || true
+        podman kube play deploy/glitch-client-kube.yaml
+    fi
 elif command -v docker &> /dev/null; then
     echo "Podman not found, falling back to docker run..."
     SERVER_URL=${SERVER_URL:-"http://www.track3.org.uk:8002"}
