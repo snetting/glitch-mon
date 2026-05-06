@@ -27,15 +27,29 @@ CHECK_INTERVAL = 1      # Add new bits every 1 second
 ANALYSIS_INTERVAL = 60  # Run statistical tests every 60 seconds (more independent)
 THRESHOLD = 1e-6        # Much stricter p-value threshold (1 in a million)
 
-# Embedded dictionary for word scanning (Common words to reduce false positives)
-DICTIONARY = {
-    "hello", "world", "glitch", "matrix", "order", "chaos", "random", "entropy",
-    "signal", "noise", "alert", "error", "found", "system", "logic", "hidden",
-    "pattern", "truth", "reality", "beyond", "inside", "outside", "unknown",
-    "detect", "monitor", "report", "center", "active", "global", "local",
-    "spirit", "matter", "energy", "future", "past", "present", "time", "space",
-    "human", "machine", "mind", "soul", "body", "earth", "star", "sun", "moon"
-}
+# Dictionary for word scanning
+DICTIONARY = set()
+DICTIONARY_LOADED = False
+
+def load_system_dictionary():
+    global DICTIONARY, DICTIONARY_LOADED
+    paths = ["/usr/share/dict/words", "/usr/share/dict/american-english", "/usr/share/dict/british-english"]
+    for path in paths:
+        if os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    # Load words of length 5+ to ensure significance
+                    DICTIONARY = {line.strip().lower() for line in f if len(line.strip()) >= 5}
+                DICTIONARY_LOADED = True
+                print(f"    Loaded {len(DICTIONARY)} words from {path}")
+                return
+            except Exception as e:
+                print(f"    Error loading dictionary {path}: {e}")
+    
+    # Fallback to a tiny essential list if no system dict found
+    if not DICTIONARY_LOADED:
+        DICTIONARY = {"matrix", "glitch", "entropy", "signal", "reality", "vortex", "system"}
+        print("    Warning: No system dictionary found. Using minimal fallback.")
 
 def get_local_ip():
     try:
@@ -114,14 +128,14 @@ def scan_for_words(bit_buffer):
                 if b in printable:
                     text += chr(b)
                 else:
-                    if len(text) >= 4:
+                    if len(text) >= 5:
                         for word in text.split():
-                            if len(word) >= 4 and word.lower() in DICTIONARY:
+                            if len(word) >= 5 and word.lower() in DICTIONARY:
                                 results.add(word.upper())
                     text = ""
-            if len(text) >= 4:
+            if len(text) >= 5:
                 for word in text.split():
-                    if len(word) >= 4 and word.lower() in DICTIONARY:
+                    if len(word) >= 5 and word.lower() in DICTIONARY:
                         results.add(word.upper())
 
     return list(results)
@@ -189,6 +203,9 @@ def runs_test(bits):
 def main():
     # Attempt to fetch public location if on a local IP
     fetch_public_location()
+    
+    # Load dictionary for word scanning
+    load_system_dictionary()
     
     # Start heartbeat background thread
     threading.Thread(target=heartbeat_thread, daemon=True).start()
