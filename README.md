@@ -17,8 +17,12 @@ Whether the random source is cryptographic, quantum, or atmospheric, it doesn't 
 The project is split into three main components:
 
 1. **Central Server (`/server`)**: A FastAPI application that aggregates anomaly reports from distributed clients, provides a web dashboard for visualization, and serves the mobile PWA. It uses SQLite for persistence.
-2. **Distributed Clients (`/client`)**: Python agents that continuously generate local randomness, run statistical tests (Monobit/Bias and Runs/Pattern) over a rolling window, and report significant deviations (p < 0.01) to the central server.
+2. **Distributed Clients (`/client`)**: Python agents that continuously generate local randomness, run statistical tests (Monobit/Bias and Runs/Pattern) over a rolling window, and report significant deviations to the central server.
 3. **Mobile Node / PWA**: A mobile-friendly web application served by the central server (`/static/mobile.html`). It utilizes the mobile browser's cryptographic randomness to act as a standalone, pocket-sized node, complete with a visual readout and notification capabilities.
+
+## Alert Rate
+
+Both the Python client and mobile PWA use a 10,000-bit rolling window, analyze once per minute, and alert when either statistical test returns `p < 1.5e-4`. With two tests per analysis, this targets roughly one false-positive-style "glitch" every 2-3 days per continuously running client. The Python client can override this with `GLITCH_P_THRESHOLD`, `GLITCH_WINDOW_SIZE`, and `GLITCH_ANALYSIS_INTERVAL`.
 
 ## Getting Started
 

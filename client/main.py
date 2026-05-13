@@ -22,10 +22,12 @@ CLIENT_ID = str(uuid.uuid4())
 # Geolocation data
 CLIENT_LOCATION = {"latitude": 0, "longitude": 0, "country": "Position Unknown", "ip_address": "Unknown"}
 
-WINDOW_SIZE = 10000    # Increased for better statistical significance
-CHECK_INTERVAL = 1      # Add new bits every 1 second
-ANALYSIS_INTERVAL = 60  # Run statistical tests every 60 seconds (more independent)
-THRESHOLD = 1e-6        # Much stricter p-value threshold (1 in a million)
+WINDOW_SIZE = int(os.environ.get("GLITCH_WINDOW_SIZE", "10000"))
+CHECK_INTERVAL = float(os.environ.get("GLITCH_CHECK_INTERVAL", "1"))
+ANALYSIS_INTERVAL = float(os.environ.get("GLITCH_ANALYSIS_INTERVAL", "60"))
+# With two tests once per minute, 1.5e-4 gives roughly one alert every
+# 2.3 days per continuously running client under ideal uniform p-values.
+THRESHOLD = float(os.environ.get("GLITCH_P_THRESHOLD", "1.5e-4"))
 
 # Dictionary for word scanning
 DICTIONARY = set()

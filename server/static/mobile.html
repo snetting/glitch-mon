@@ -69,7 +69,10 @@
 
         var bitBuffer = [];
         var WINDOW_SIZE = 10000;
-        var THRESHOLD = 0.000001;
+        var THRESHOLD = 0.00015;
+        var ANALYSIS_INTERVAL_MS = 60000;
+        var DRIP_INTERVAL_MS = 500;
+        var lastAnalysisTime = 0;
 
         function erfc(x) {
             var z = Math.abs(x);
@@ -109,12 +112,18 @@
             }
         }
 
-        function analyze() {
+        function updateBufferStatus() {
             var count = Math.min(bitBuffer.length, WINDOW_SIZE);
             document.getElementById('bit-count').innerText = count;
             document.getElementById('progress-fill').style.width = (count / WINDOW_SIZE * 100) + '%';
+        }
 
+        function analyze(force) {
+            updateBufferStatus();
             if (bitBuffer.length < WINDOW_SIZE) return;
+            var now = Date.now();
+            if (!force && lastAnalysisTime && (now - lastAnalysisTime) < ANALYSIS_INTERVAL_MS) return;
+            lastAnalysisTime = now;
 
             // Monobit
             var s = 0;
@@ -129,11 +138,14 @@
 
             // Runs
             var pi = sum / WINDOW_SIZE;
-            var vObs = 1;
-            for (var j = 0; j < WINDOW_SIZE - 1; j++) {
-                if (bitBuffer[j] !== bitBuffer[j+1]) vObs++;
+            var pRuns = 0.0;
+            if (Math.abs(pi - 0.5) < (2 / Math.sqrt(WINDOW_SIZE))) {
+                var vObs = 1;
+                for (var j = 0; j < WINDOW_SIZE - 1; j++) {
+                    if (bitBuffer[j] !== bitBuffer[j+1]) vObs++;
+                }
+                pRuns = erfc(Math.abs(vObs - 2 * WINDOW_SIZE * pi * (1 - pi)) / (2 * Math.sqrt(2 * WINDOW_SIZE) * pi * (1 - pi)));
             }
-            var pRuns = erfc(Math.abs(vObs - 2 * WINDOW_SIZE * pi * (1 - pi)) / (2 * Math.sqrt(2 * WINDOW_SIZE) * pi * (1 - pi)));
             document.getElementById('runs-p').innerText = pRuns.toExponential(2);
 
             if (pMonobit < THRESHOLD) { report('monobit', pMonobit); bitBuffer = []; }
@@ -163,12 +175,12 @@
                     bitBuffer.splice(0, bitBuffer.length - WINDOW_SIZE);
                 }
                 
-                analyze();
+                analyze(false);
             } catch (e) {
                 var el = document.getElementById('server-status');
                 if(el) el.innerText = 'ERROR: ' + e.message;
             }
-            setTimeout(drip, 500);
+            setTimeout(drip, DRIP_INTERVAL_MS);
         }
 
         function sendHeartbeat() {
