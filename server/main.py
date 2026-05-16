@@ -55,20 +55,20 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 class Heartbeat(BaseModel):
     client_id: str
-    latitude: float = None
-    longitude: float = None
-    country: str = None
-    ip_address: str = None
+    latitude: float | None = None
+    longitude: float | None = None
+    country: str | None = None
+    ip_address: str | None = None
 
 class Report(BaseModel):
     client_id: str
     test_type: str
     p_value: float
-    latitude: float = None
-    longitude: float = None
-    country: str = None
-    ip_address: str = None
-    detected_words: str = None
+    latitude: float | None = None
+    longitude: float | None = None
+    country: str | None = None
+    ip_address: str | None = None
+    detected_words: str | None = None
 
 async def get_geo_data(ip: str):
     # Free API for IP Geolocation

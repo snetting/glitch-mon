@@ -177,10 +177,13 @@ def send_notification(message, is_alert=True, test_type=None, p_value=None, dete
                 "client_id": CLIENT_ID,
                 "test_type": test_type,
                 "p_value": p_value,
-                "detected_words": ", ".join(detected_words) if detected_words else None
             }
+            if detected_words:
+                payload["detected_words"] = ", ".join(detected_words)
             payload.update(CLIENT_LOCATION)
-            requests.post(f"{SERVER_URL}/api/report", json=payload, timeout=5)
+            resp = requests.post(f"{SERVER_URL}/api/report", json=payload, timeout=5)
+            if resp.status_code >= 400:
+                log(f"ERROR: Failed to report to central server: HTTP {resp.status_code}: {resp.text[:300]}")
         except Exception as e:
             log(f"ERROR: Failed to report to central server: {e}")
 
