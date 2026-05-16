@@ -22,7 +22,7 @@ The project is split into three main components:
 
 ## Alert Rate
 
-Both the Python client and mobile PWA use a 10,000-bit rolling window, analyze once per minute, and alert when either statistical test returns `p < 1.5e-4`. With two tests per analysis, this targets roughly one false-positive-style "glitch" every 2-3 days per continuously running client. The Python client can override this with `GLITCH_P_THRESHOLD`, `GLITCH_WINDOW_SIZE`, and `GLITCH_ANALYSIS_INTERVAL`.
+Both the Python client and mobile PWA use a 10,000-bit rolling window, analyze once per minute, and alert when either statistical test returns `p < 3e-3`. Because adjacent analyses mostly reuse the same rolling-window data, this targets roughly one false-positive-style "glitch" every 2-3 days per continuously running client. The Python client can override this with `GLITCH_P_THRESHOLD`, `GLITCH_WINDOW_SIZE`, and `GLITCH_ANALYSIS_INTERVAL`.
 
 ## Getting Started
 

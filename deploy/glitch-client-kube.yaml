@@ -17,6 +17,8 @@ spec:
         image: localhost/glitch-client:latest
         imagePullPolicy: Never
         env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
         # The URL of your central server running elsewhere
         - name: SERVER_URL
           value: "http://www.track3.org.uk:8002"

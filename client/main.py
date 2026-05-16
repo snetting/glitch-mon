@@ -25,9 +25,10 @@ CLIENT_LOCATION = {"latitude": 0, "longitude": 0, "country": "Position Unknown",
 WINDOW_SIZE = int(os.environ.get("GLITCH_WINDOW_SIZE", "10000"))
 CHECK_INTERVAL = float(os.environ.get("GLITCH_CHECK_INTERVAL", "1"))
 ANALYSIS_INTERVAL = float(os.environ.get("GLITCH_ANALYSIS_INTERVAL", "60"))
-# With two tests once per minute, 1.5e-4 gives roughly one alert every
-# 2.3 days per continuously running client under ideal uniform p-values.
-THRESHOLD = float(os.environ.get("GLITCH_P_THRESHOLD", "1.5e-4"))
+# The 10,000-bit rolling window receives about 480 fresh bits per minute, so
+# adjacent analyses are strongly overlapping. A 3e-3 threshold targets roughly
+# one alert every 2-3 days per continuously running client under ideal p-values.
+THRESHOLD = float(os.environ.get("GLITCH_P_THRESHOLD", "3e-3"))
 
 # Dictionary for word scanning
 DICTIONARY = set()
@@ -159,8 +160,11 @@ def send_notification(message, is_alert=True, test_type=None, p_value=None, dete
     # 1. Local/Ntfy Notification (Optional)
     if NTFY_URL:
         try:
-            requests.post(NTFY_URL, data=full_message.encode("utf-8"), timeout=5)
-        except: pass
+            resp = requests.post(NTFY_URL, data=full_message.encode("utf-8"), timeout=5)
+            if resp.status_code >= 400:
+                log(f"ERROR: ntfy notification failed with HTTP {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            log(f"ERROR: ntfy notification failed: {e}")
 
     try:
         subprocess.run(["notify-send", "Randomness Monitor", message], check=False)
@@ -219,6 +223,14 @@ def main():
     
     log("SUCCESSFUL START: Randomness Monitor active and reporting.")
     log(f"NODE ID: {CLIENT_ID}")
+    log(
+        "CONFIG: "
+        f"server={SERVER_URL}, "
+        f"ntfy={'enabled' if NTFY_URL else 'disabled'}, "
+        f"threshold={THRESHOLD:.2e}, "
+        f"window={WINDOW_SIZE}, "
+        f"analysis_interval={ANALYSIS_INTERVAL:g}s"
+    )
     
     bit_buffer = deque(maxlen=WINDOW_SIZE)
     last_analysis_time = time.time()
@@ -242,7 +254,11 @@ def main():
                 last_analysis_time = current_time
                 
                 if int(current_time) % 60 == 0:
-                    log(f"STATUS: P-Values: Monobit={p_monobit:.2e}, Runs={p_runs:.2e}")
+                    log(
+                        "STATUS: normal sample, no alert. "
+                        f"P-Values: Monobit={p_monobit:.2e}, Runs={p_runs:.2e}, "
+                        f"threshold={THRESHOLD:.2e}"
+                    )
 
                 if p_monobit < THRESHOLD or p_runs < THRESHOLD:
                     test_type = "monobit" if p_monobit < THRESHOLD else "runs"
