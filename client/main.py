@@ -125,11 +125,14 @@ def scan_for_words(bit_buffer):
     
     for base_data in get_variations(data):
         for shift in range(8):
-            shifted = bytearray()
-            for i in range(len(base_data) - 1):
-                combined = (base_data[i] << 8) | base_data[i+1]
-                shifted_byte = (combined >> (8 - shift)) & 0xFF
-                shifted.append(shifted_byte)
+            if shift == 0:
+                shifted = base_data
+            else:
+                shifted = bytearray()
+                for i in range(len(base_data) - 1):
+                    combined = (base_data[i] << 8) | base_data[i+1]
+                    shifted_byte = (combined >> (8 - shift)) & 0xFF
+                    shifted.append(shifted_byte)
             
             # Extract printable strings
             text = ""
@@ -147,7 +150,7 @@ def scan_for_words(bit_buffer):
                     if len(word) >= 5 and word.lower() in DICTIONARY:
                         results.add(word.upper())
 
-    return list(results)
+    return sorted(results)
 
 def send_notification(message, is_alert=True, test_type=None, p_value=None, detected_words=None):
     prefix = "🚨 " if is_alert else "ℹ️ "

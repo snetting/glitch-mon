@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, BackgroundTasks
+from fastapi import FastAPI, Request, BackgroundTasks, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -14,6 +14,14 @@ app = FastAPI()
 
 # Database setup
 DB_FILE = "anomalies.db"
+TIME_SPANS = {
+    "15m": 15 * 60,
+    "1h": 60 * 60,
+    "24h": 24 * 60 * 60,
+    "week": 7 * 24 * 60 * 60,
+    "month": 30 * 24 * 60 * 60,
+    "all": None,
+}
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -150,20 +158,25 @@ async def report(rep: Report, request: Request, background_tasks: BackgroundTask
     return {"status": "ok"}
 
 @app.get("/api/stats")
-async def get_stats():
+async def get_stats(time_span: str = Query("24h", pattern="^(15m|1h|24h|week|month|all)$")):
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
+    now = time.time()
     
     # Get active clients (heartbeat in last 5 minutes)
-    five_mins_ago = time.time() - 300
+    five_mins_ago = now - 300
     c.execute("SELECT client_id, latitude, longitude, country FROM clients WHERE last_heartbeat > ?", (five_mins_ago,))
     active_client_rows = c.fetchall()
     clients_data = [dict(r) for r in active_client_rows]
     
-    # Get recent anomalies (last 24 hours) - EXCLUDING ip_address for privacy
-    one_day_ago = time.time() - 86400
-    c.execute("SELECT id, timestamp, client_id, test_type, p_value, latitude, longitude, country, detected_words FROM anomalies WHERE timestamp > ? ORDER BY timestamp DESC", (one_day_ago,))
+    # Get anomalies for the requested dashboard window, excluding ip_address for privacy.
+    selected_seconds = TIME_SPANS[time_span]
+    if selected_seconds is None:
+        c.execute("SELECT id, timestamp, client_id, test_type, p_value, latitude, longitude, country, detected_words FROM anomalies ORDER BY timestamp DESC")
+    else:
+        window_start = now - selected_seconds
+        c.execute("SELECT id, timestamp, client_id, test_type, p_value, latitude, longitude, country, detected_words FROM anomalies WHERE timestamp > ? ORDER BY timestamp DESC", (window_start,))
     rows = c.fetchall()
     anomalies = [dict(r) for r in rows]
     
@@ -171,7 +184,9 @@ async def get_stats():
     return {
         "active_clients": len(clients_data) or 1, # default to 1 to prevent /0 in chart
         "clients_data": clients_data,
-        "anomalies": anomalies
+        "anomalies": anomalies,
+        "time_span": time_span,
+        "time_span_seconds": selected_seconds,
     }
 
 @app.get("/")

@@ -11,19 +11,22 @@
         body { font-family: 'Courier New', Courier, monospace; background: #000; color: #0f0; margin: 0; padding: 20px; }
         h1 { text-align: center; text-transform: uppercase; letter-spacing: 5px; }
         .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1200px; margin: 0 auto; }
+        .time-controls {
+            grid-column: span 2; border: 1px solid #0f0; background: #050505; padding: 10px 15px;
+            display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap;
+            font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px;
+        }
+        .time-controls button {
+            background: #000; color: #0f0; border: 1px solid #080; cursor: pointer; padding: 4px 9px;
+            font-family: inherit; text-transform: uppercase;
+        }
+        .time-controls button.active { background: #0f0; color: #000; border-color: #0f0; }
         #map { height: 400px; border: 1px solid #0f0; position: relative; }
-        .map-controls { 
-            position: absolute; top: 10px; right: 10px; z-index: 1000; 
-            background: rgba(0,0,0,0.8); border: 1px solid #0f0; padding: 5px; font-size: 0.7em;
-        }
-        .map-controls button { 
-            background: #000; color: #0f0; border: 1px solid #080; cursor: pointer; margin: 0 2px;
-        }
-        .map-controls button.active { background: #0f0; color: #000; }
         .stats-panel { border: 1px solid #0f0; padding: 15px; background: #050505; display: flex; flex-direction: column; }
         .chart-container { grid-column: span 2; height: 300px; border: 1px solid #0f0; padding: 10px; }
         .glitch-list { flex-grow: 1; overflow-y: auto; font-size: 0.8em; margin-top: 10px; border-top: 1px solid #030; }
         .word-panel { grid-column: span 2; border: 1px solid #0f0; padding: 15px; background: #050505; margin-top: 10px; }
+        .word-explainer { color: #090; font-size: 0.82em; line-height: 1.45; margin-bottom: 14px; }
         .word-cloud { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
         .word-tag { background: #030; color: #0f0; padding: 2px 8px; border: 1px solid #0f0; font-size: 0.9em; text-transform: uppercase; cursor: help; }
         .word-tag.sync { background: #0f0; color: #000; font-weight: bold; border-color: #fff; box-shadow: 0 0 10px #0f0; }
@@ -42,18 +45,21 @@
     <h1>Random Anomaly Dashboard</h1>
     
     <div class="container">
-        <div id="map">
-            <div class="map-controls">
-                MAP WINDOW: 
-                <button onclick="setMapWindow(900, this)">15M</button>
-                <button onclick="setMapWindow(3600, this)" class="active">1H</button>
-                <button onclick="setMapWindow(86400, this)">24H</button>
-            </div>
+        <div class="time-controls">
+            <span>Time span:</span>
+            <button data-span="15m" onclick="setTimeSpan('15m', this)">15M</button>
+            <button data-span="1h" onclick="setTimeSpan('1h', this)">1H</button>
+            <button data-span="24h" onclick="setTimeSpan('24h', this)" class="active">24H</button>
+            <button data-span="week" onclick="setTimeSpan('week', this)">Week</button>
+            <button data-span="month" onclick="setTimeSpan('month', this)">Month</button>
+            <button data-span="all" onclick="setTimeSpan('all', this)">All Time</button>
         </div>
+
+        <div id="map"></div>
         <div class="stats-panel">
             <div>ACTIVE REPORTERS:</div>
             <div id="active-reporters" class="active-count">0</div>
-            <div style="margin-top:20px;">LATEST ANOMALIES:</div>
+            <div style="margin-top:20px;">ANOMALIES IN SELECTED SPAN:</div>
             <div id="glitch-list" class="glitch-list"></div>
         </div>
         <div class="chart-container">
@@ -61,9 +67,12 @@
         </div>
 
         <div class="word-panel">
-            <div style="text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; border-bottom: 1px solid #030;">Captured Word Fragments (Matrix Leakage)</div>
+            <div style="text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; border-bottom: 1px solid #030;">Leaked Words</div>
+            <div class="word-explainer">
+                When a statistical glitch is detected, the client scans the same rolling bit buffer as ASCII across bit shifts, inverted bytes, bit-reversed bytes, and backwards byte order. Any 5+ letter dictionary matches are reported here as leaked words. Most glitches should have none; an empty list means no dictionary words were found in the selected time span.
+            </div>
             <div id="word-cloud" class="word-cloud">
-                <span style="color: #030;">Waiting for anomalies...</span>
+                <span style="color: #030;">No leaked words in selected span.</span>
             </div>
         </div>
 
@@ -89,13 +98,44 @@
         const map = L.map('map').setView([20, 0], 2);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
         let markers = [];
-        let mapWindowSeconds = 3600;
+        let selectedTimeSpan = '24h';
 
-        function setMapWindow(seconds, btn) {
-            mapWindowSeconds = seconds;
-            document.querySelectorAll('.map-controls button').forEach(b => b.classList.remove('active'));
+        function setTimeSpan(span, btn) {
+            selectedTimeSpan = span;
+            document.querySelectorAll('.time-controls button').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             updateData();
+        }
+
+        function escapeHtml(value) {
+            return String(value || '').replace(/[&<>"']/g, char => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[char]));
+        }
+
+        function locationName(item) {
+            return (!item.latitude && !item.longitude) || item.country === 'Localhost'
+                ? 'Position Unknown'
+                : (item.country || 'Position Unknown');
+        }
+
+        function chartWindowSeconds(data, now) {
+            if (data.time_span_seconds) return data.time_span_seconds;
+            if (!data.anomalies.length) return 86400;
+            const oldest = Math.min(...data.anomalies.map(a => a.timestamp));
+            return Math.max(now - oldest, 3600);
+        }
+
+        function chartLabel(timestamp, spanSeconds) {
+            const date = new Date(timestamp * 1000);
+            if (spanSeconds > 86400) {
+                return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+            }
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
 
         const ctx = document.getElementById('correlationChart').getContext('2d');
@@ -125,7 +165,7 @@
 
         async function updateData() {
             try {
-                const response = await fetch('/api/stats');
+                const response = await fetch(`/api/stats?time_span=${encodeURIComponent(selectedTimeSpan)}`);
                 const data = await response.json();
                 const now = Date.now() / 1000;
                 
@@ -151,31 +191,27 @@
                         const m = L.circleMarker([lat, lon], {
                             radius: 6, color: '#0f0', fillColor: '#0f0', fillOpacity: 0.3, weight: 1
                         }).addTo(map)
-                        .bindPopup(`<b>ACTIVE NODE</b><br>[${(c.client_id || '').substring(0,8)}]<br>${locName}`);
+                        .bindPopup(`<b>ACTIVE NODE</b><br>[${escapeHtml((c.client_id || '').substring(0,8))}]<br>${escapeHtml(locName)}`);
                         markers.push(m);
                     });
                 }
 
                 // 2. Draw Anomalies (Red)
                 data.anomalies.forEach(a => {
-                    const age = now - a.timestamp;
-                    if (age <= mapWindowSeconds) {
-                        let lat = a.latitude;
-                        let lon = a.longitude;
-                        let locName = a.country || 'Position Unknown';
-                        
-                        if (!lat && !lon) {
-                            lat = 30 + (Math.random() * 5 - 2.5);
-                            lon = -30 + (Math.random() * 5 - 2.5);
-                            locName = 'Position Unknown';
-                        }
-                        
-                        const m = L.circleMarker([lat, lon], {
-                            radius: 8, color: '#f00', fillColor: '#f00', fillOpacity: 0.8, weight: 2
-                        }).addTo(map)
-                        .bindPopup(`<b>${a.test_type.toUpperCase()} GLITCH</b><br>[${(a.client_id || '').substring(0,8)}]<br>${locName}<br>${new Date(a.timestamp * 1000).toLocaleString()}<br>P=${a.p_value.toExponential(2)}`);
-                        markers.push(m);
+                    let lat = a.latitude;
+                    let lon = a.longitude;
+                    let locName = locationName(a);
+
+                    if (!lat && !lon) {
+                        lat = 30 + (Math.random() * 5 - 2.5);
+                        lon = -30 + (Math.random() * 5 - 2.5);
                     }
+
+                    const m = L.circleMarker([lat, lon], {
+                        radius: 8, color: '#f00', fillColor: '#f00', fillOpacity: 0.8, weight: 2
+                    }).addTo(map)
+                    .bindPopup(`<b>${escapeHtml(a.test_type).toUpperCase()} GLITCH</b><br>[${escapeHtml((a.client_id || '').substring(0,8))}]<br>${escapeHtml(locName)}<br>${new Date(a.timestamp * 1000).toLocaleString()}<br>P=${Number(a.p_value).toExponential(2)}`);
+                    markers.push(m);
                 });
 
                 // Update List and Word Cloud
@@ -184,11 +220,12 @@
                 const wordStats = {}; // { WORD: { count: 0, geos: Set, clients: Set } }
 
                 list.innerHTML = data.anomalies.map(a => {
-                    const locName = (!a.latitude && !a.longitude) || a.country === 'Localhost' ? 'Position Unknown' : a.country;
-                    const wordStr = a.detected_words ? `<span class="words">WORDS: ${a.detected_words}</span>` : '';
+                    const locName = locationName(a);
+                    const wordStr = a.detected_words ? `<span class="words">WORDS: ${escapeHtml(a.detected_words)}</span>` : '';
                     if (a.detected_words) {
                         a.detected_words.split(',').forEach(w => {
                             const word = w.trim().toUpperCase();
+                            if (!word) return;
                             if (!wordStats[word]) wordStats[word] = { count: 0, geos: new Set(), clients: new Set() };
                             wordStats[word].count++;
                             wordStats[word].geos.add(locName);
@@ -197,12 +234,12 @@
                     }
                     return `
                     <div class="glitch-item">
-                        [${new Date(a.timestamp * 1000).toLocaleTimeString()}] [${(a.client_id || 'Unknown').substring(0,8)}] ${locName}: 
-                        ${a.test_type.toUpperCase()} (P=${a.p_value.toExponential(2)})
+                        [${new Date(a.timestamp * 1000).toLocaleString()}] [${escapeHtml((a.client_id || 'Unknown').substring(0,8))}] ${escapeHtml(locName)}:
+                        ${escapeHtml(a.test_type).toUpperCase()} (P=${Number(a.p_value).toExponential(2)})
                         ${wordStr}
                     </div>
                     `;
-                }).join('');
+                }).join('') || '<div class="glitch-item" style="color:#030;">No anomalies in selected span.</div>';
 
                 const words = Object.keys(wordStats);
                 if (words.length > 0) {
@@ -217,23 +254,25 @@
                         const s = wordStats[w];
                         const isSync = s.geos.size > 1 || s.clients.size > 1;
                         const title = `${w}\nFound ${s.count} times\nLocations: ${Array.from(s.geos).join(', ')}`;
-                        return `<span class="word-tag ${isSync ? 'sync' : ''}" title="${title}">${w}${isSync ? ' [SYNC]' : ''}</span>`;
+                        return `<span class="word-tag ${isSync ? 'sync' : ''}" title="${escapeHtml(title)}">${escapeHtml(w)}${isSync ? ' [SYNC]' : ''}</span>`;
                     }).join('');
                 } else {
-                    cloud.innerHTML = '<span style="color: #030;">Waiting for anomalies...</span>';
+                    cloud.innerHTML = '<span style="color: #030;">No leaked words in selected span.</span>';
                 }
 
-                // Update Chart (10-minute correlation windows)
-                const windowSize = 600; // 10 minutes
+                // Update Chart
+                const spanSeconds = chartWindowSeconds(data, now);
+                const bucketCount = 36;
+                const windowSize = Math.max(spanSeconds / bucketCount, 60);
                 const labels = [];
                 const scores = [];
                 
-                for (let i = 36; i >= 0; i--) {
+                for (let i = bucketCount - 1; i >= 0; i--) {
                     const windowEnd = now - (i * windowSize);
                     const windowStart = windowEnd - windowSize;
                     const count = data.anomalies.filter(a => a.timestamp >= windowStart && a.timestamp < windowEnd).length;
                     
-                    labels.push(new Date(windowEnd * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+                    labels.push(chartLabel(windowEnd, spanSeconds));
                     scores.push(count / data.active_clients);
                 }
                 
