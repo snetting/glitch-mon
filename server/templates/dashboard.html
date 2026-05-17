@@ -21,6 +21,14 @@
             font-family: inherit; text-transform: uppercase;
         }
         .time-controls button.active { background: #0f0; color: #000; border-color: #0f0; }
+        .event-lookup {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: 10px;
+            border-left: 1px solid #030; padding-left: 14px;
+        }
+        .event-lookup input, .event-lookup select {
+            background: #000; color: #0f0; border: 1px solid #080; padding: 3px 6px;
+            font-family: inherit;
+        }
         #map { height: 400px; border: 1px solid #0f0; position: relative; }
         .stats-panel { border: 1px solid #0f0; padding: 15px; background: #050505; display: flex; flex-direction: column; }
         .chart-container { grid-column: span 2; height: 300px; border: 1px solid #0f0; padding: 10px; }
@@ -53,6 +61,16 @@
             <button data-span="week" onclick="setTimeSpan('week', this)">Week</button>
             <button data-span="month" onclick="setTimeSpan('month', this)">Month</button>
             <button data-span="all" onclick="setTimeSpan('all', this)">All Time</button>
+            <div class="event-lookup">
+                <span>Event lookup:</span>
+                <input id="event-date" type="date" aria-label="Event date">
+                <select id="event-window" aria-label="Event window">
+                    <option value="1">Day</option>
+                    <option value="7" selected>Week Around</option>
+                    <option value="30">Month Around</option>
+                </select>
+                <button id="event-apply" onclick="applyEventLookup()">Apply</button>
+            </div>
         </div>
 
         <div id="map"></div>
@@ -69,7 +87,7 @@
         <div class="word-panel">
             <div style="text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; border-bottom: 1px solid #030;">Leaked Words</div>
             <div class="word-explainer">
-                When a statistical glitch is detected, the client scans the same rolling bit buffer as ASCII across bit shifts, inverted bytes, bit-reversed bytes, and backwards byte order. Any 5+ letter dictionary matches are reported here as leaked words. Most glitches should have none; an empty list means no dictionary words were found in the selected time span.
+                When a statistical glitch is detected, the client scans the same rolling bit buffer as ASCII across bit shifts, inverted bytes, bit-reversed bytes, and backwards byte order. Any 4+ letter dictionary matches are reported here as leaked words. Most glitches should have none; an empty list means no dictionary words were found in the selected time span.
             </div>
             <div id="word-cloud" class="word-cloud">
                 <span style="color: #030;">No leaked words in selected span.</span>
@@ -99,12 +117,44 @@
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
         let markers = [];
         let selectedTimeSpan = '24h';
+        let selectedRange = null;
 
         function setTimeSpan(span, btn) {
             selectedTimeSpan = span;
+            selectedRange = null;
             document.querySelectorAll('.time-controls button').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             updateData();
+        }
+
+        function applyEventLookup() {
+            const dateValue = document.getElementById('event-date').value;
+            if (!dateValue) return;
+
+            const days = Number(document.getElementById('event-window').value);
+            const center = new Date(`${dateValue}T00:00:00`);
+            const startDate = new Date(center);
+            if (days > 1) {
+                startDate.setDate(startDate.getDate() - Math.floor(days / 2));
+            }
+            const endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + days);
+
+            selectedTimeSpan = 'custom';
+            selectedRange = {
+                start: Math.floor(startDate.getTime() / 1000),
+                end: Math.floor(endDate.getTime() / 1000)
+            };
+            document.querySelectorAll('.time-controls button').forEach(b => b.classList.remove('active'));
+            document.getElementById('event-apply').classList.add('active');
+            updateData();
+        }
+
+        function statsUrl() {
+            if (selectedRange) {
+                return `/api/stats?start=${selectedRange.start}&end=${selectedRange.end}`;
+            }
+            return `/api/stats?time_span=${encodeURIComponent(selectedTimeSpan)}`;
         }
 
         function escapeHtml(value) {
@@ -123,11 +173,24 @@
                 : (item.country || 'Position Unknown');
         }
 
-        function chartWindowSeconds(data, now) {
-            if (data.time_span_seconds) return data.time_span_seconds;
-            if (!data.anomalies.length) return 86400;
+        function chartWindow(data, now) {
+            if (data.range_start != null && data.range_end != null) {
+                return {
+                    start: data.range_start,
+                    end: data.range_end,
+                    seconds: Math.max(data.range_end - data.range_start, 3600)
+                };
+            }
+            if (data.time_span_seconds) {
+                return {
+                    start: now - data.time_span_seconds,
+                    end: now,
+                    seconds: data.time_span_seconds
+                };
+            }
+            if (!data.anomalies.length) return { start: now - 86400, end: now, seconds: 86400 };
             const oldest = Math.min(...data.anomalies.map(a => a.timestamp));
-            return Math.max(now - oldest, 3600);
+            return { start: oldest, end: now, seconds: Math.max(now - oldest, 3600) };
         }
 
         function chartLabel(timestamp, spanSeconds) {
@@ -165,7 +228,7 @@
 
         async function updateData() {
             try {
-                const response = await fetch(`/api/stats?time_span=${encodeURIComponent(selectedTimeSpan)}`);
+                const response = await fetch(statsUrl());
                 const data = await response.json();
                 const now = Date.now() / 1000;
                 
@@ -261,18 +324,18 @@
                 }
 
                 // Update Chart
-                const spanSeconds = chartWindowSeconds(data, now);
+                const chartRange = chartWindow(data, now);
                 const bucketCount = 36;
-                const windowSize = Math.max(spanSeconds / bucketCount, 60);
+                const windowSize = Math.max(chartRange.seconds / bucketCount, 60);
                 const labels = [];
                 const scores = [];
                 
                 for (let i = bucketCount - 1; i >= 0; i--) {
-                    const windowEnd = now - (i * windowSize);
+                    const windowEnd = chartRange.end - (i * windowSize);
                     const windowStart = windowEnd - windowSize;
                     const count = data.anomalies.filter(a => a.timestamp >= windowStart && a.timestamp < windowEnd).length;
                     
-                    labels.push(chartLabel(windowEnd, spanSeconds));
+                    labels.push(chartLabel(windowEnd, chartRange.seconds));
                     scores.push(count / data.active_clients);
                 }
                 

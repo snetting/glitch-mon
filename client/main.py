@@ -33,6 +33,7 @@ THRESHOLD = float(os.environ.get("GLITCH_P_THRESHOLD", "3e-3"))
 # Dictionary for word scanning
 DICTIONARY = set()
 DICTIONARY_LOADED = False
+MIN_WORD_LENGTH = 4
 
 def log(message):
     timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
@@ -45,8 +46,8 @@ def load_system_dictionary():
         if os.path.exists(path):
             try:
                 with open(path, "r") as f:
-                    # Load words of length 5+ to ensure significance
-                    DICTIONARY = {line.strip().lower() for line in f if len(line.strip()) >= 5}
+                    # Load words of length 4+ to balance sensitivity with random short-word noise.
+                    DICTIONARY = {line.strip().lower() for line in f if len(line.strip()) >= MIN_WORD_LENGTH}
                 DICTIONARY_LOADED = True
                 log(f"SYSTEM DICTIONARY FOUND: Loaded {len(DICTIONARY)} words from {path}")
                 return
@@ -55,7 +56,11 @@ def load_system_dictionary():
     
     # Fallback to a tiny essential list if no system dict found
     if not DICTIONARY_LOADED:
-        DICTIONARY = {"matrix", "glitch", "entropy", "signal", "reality", "vortex", "system"}
+        DICTIONARY = {
+            "dead", "entropy", "fear", "fire", "glitch", "hope", "life", "love",
+            "mars", "matrix", "moon", "reality", "signal", "system", "time",
+            "true", "void", "vortex",
+        }
         log("WARNING: No system dictionary found. Falling back to minimal internal wordlist.")
 
 def get_local_ip():
@@ -140,14 +145,14 @@ def scan_for_words(bit_buffer):
                 if b in printable:
                     text += chr(b)
                 else:
-                    if len(text) >= 5:
+                    if len(text) >= MIN_WORD_LENGTH:
                         for word in text.split():
-                            if len(word) >= 5 and word.lower() in DICTIONARY:
+                            if len(word) >= MIN_WORD_LENGTH and word.lower() in DICTIONARY:
                                 results.add(word.upper())
                     text = ""
-            if len(text) >= 5:
+            if len(text) >= MIN_WORD_LENGTH:
                 for word in text.split():
-                    if len(word) >= 5 and word.lower() in DICTIONARY:
+                    if len(word) >= MIN_WORD_LENGTH and word.lower() in DICTIONARY:
                         results.add(word.upper())
 
     return sorted(results)

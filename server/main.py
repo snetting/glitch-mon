@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, BackgroundTasks, Query
+from fastapi import FastAPI, Request, BackgroundTasks, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -158,7 +158,11 @@ async def report(rep: Report, request: Request, background_tasks: BackgroundTask
     return {"status": "ok"}
 
 @app.get("/api/stats")
-async def get_stats(time_span: str = Query("24h", pattern="^(15m|1h|24h|week|month|all)$")):
+async def get_stats(
+    time_span: str = Query("24h", pattern="^(15m|1h|24h|week|month|all)$"),
+    start: float | None = None,
+    end: float | None = None,
+):
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
@@ -171,12 +175,26 @@ async def get_stats(time_span: str = Query("24h", pattern="^(15m|1h|24h|week|mon
     clients_data = [dict(r) for r in active_client_rows]
     
     # Get anomalies for the requested dashboard window, excluding ip_address for privacy.
-    selected_seconds = TIME_SPANS[time_span]
-    if selected_seconds is None:
-        c.execute("SELECT id, timestamp, client_id, test_type, p_value, latitude, longitude, country, detected_words FROM anomalies ORDER BY timestamp DESC")
+    range_start = None
+    range_end = None
+    if start is not None or end is not None:
+        if start is None or end is None or start >= end:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Custom ranges require start < end")
+        time_span = "custom"
+        selected_seconds = end - start
+        range_start = start
+        range_end = end
+        c.execute("SELECT id, timestamp, client_id, test_type, p_value, latitude, longitude, country, detected_words FROM anomalies WHERE timestamp >= ? AND timestamp < ? ORDER BY timestamp DESC", (start, end))
     else:
-        window_start = now - selected_seconds
-        c.execute("SELECT id, timestamp, client_id, test_type, p_value, latitude, longitude, country, detected_words FROM anomalies WHERE timestamp > ? ORDER BY timestamp DESC", (window_start,))
+        selected_seconds = TIME_SPANS[time_span]
+        if selected_seconds is None:
+            c.execute("SELECT id, timestamp, client_id, test_type, p_value, latitude, longitude, country, detected_words FROM anomalies ORDER BY timestamp DESC")
+        else:
+            window_start = now - selected_seconds
+            range_start = window_start
+            range_end = now
+            c.execute("SELECT id, timestamp, client_id, test_type, p_value, latitude, longitude, country, detected_words FROM anomalies WHERE timestamp > ? ORDER BY timestamp DESC", (window_start,))
     rows = c.fetchall()
     anomalies = [dict(r) for r in rows]
     
@@ -187,6 +205,8 @@ async def get_stats(time_span: str = Query("24h", pattern="^(15m|1h|24h|week|mon
         "anomalies": anomalies,
         "time_span": time_span,
         "time_span_seconds": selected_seconds,
+        "range_start": range_start,
+        "range_end": range_end,
     }
 
 @app.get("/")
