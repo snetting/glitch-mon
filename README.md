@@ -44,7 +44,9 @@ A unified build script is provided to compile both the server and client Docker 
 ```
 
 ### Running the Server
-The server runs via Docker. By default, it exposes port `8002` (which can be overridden via the `SERVER_PORT` environment variable).
+You can run your own server, but contributors are strongly encouraged to use the shared central server at `http://www.track3.org.uk:8002` for client reporting. A larger shared network makes the dashboard, map, timing analysis, and leaked-word observations more useful than isolated private deployments.
+
+For custom or experimental deployments, the server runs via Docker. By default, it exposes port `8002` (which can be overridden via the `SERVER_PORT` environment variable).
 
 ```bash
 ./run-server.sh
@@ -54,7 +56,7 @@ The server runs via Docker. By default, it exposes port `8002` (which can be ove
 
 ### Running a Client Node
 
-You can run the client node using either Docker or Podman. Ensure the `SERVER_URL` points to your central server instance.
+You can run the client node using either Docker or Podman. By default, point `SERVER_URL` at the shared central server (`http://www.track3.org.uk:8002`) so your node contributes to the public network. Use a custom `SERVER_URL` only if you intentionally want a private or test network.
 
 **Using the helper script:**
 ```bash
