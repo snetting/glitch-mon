@@ -34,6 +34,9 @@ THRESHOLD = float(os.environ.get("GLITCH_P_THRESHOLD", "3e-3"))
 DICTIONARY = set()
 DICTIONARY_LOADED = False
 MIN_WORD_LENGTH = 4
+# Contiguous ASCII letter runs in random bytes are usually very short. Still, cap the
+# substring scan to keep worst-case work bounded in the (rare) case of long runs.
+MAX_WORD_LENGTH = int(os.environ.get("GLITCH_MAX_WORD_LENGTH", "24"))
 
 def log(message):
     timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
@@ -127,6 +130,24 @@ def scan_for_words(bit_buffer):
         yield raw_data[::-1]
 
     printable = set(string.ascii_letters.encode('ascii'))
+
+    def scan_letter_run(run_text: str):
+        """
+        Given a contiguous run of ASCII letters, find any dictionary words within it.
+        The previous implementation only checked the entire run as a single "word",
+        which dramatically reduced detection of 5+ letter words (and missed all
+        substrings inside longer runs).
+        """
+        if len(run_text) < MIN_WORD_LENGTH:
+            return
+        t = run_text.lower()
+        # Scan substrings. Runs are typically ~1-7 chars in random bytes, so this is cheap.
+        max_len = min(len(t), MAX_WORD_LENGTH)
+        for i in range(0, len(t) - MIN_WORD_LENGTH + 1):
+            for L in range(MIN_WORD_LENGTH, max_len - i + 1):
+                w = t[i : i + L]
+                if w in DICTIONARY:
+                    results.add(w.upper())
     
     for base_data in get_variations(data):
         for shift in range(8):
@@ -145,15 +166,9 @@ def scan_for_words(bit_buffer):
                 if b in printable:
                     text += chr(b)
                 else:
-                    if len(text) >= MIN_WORD_LENGTH:
-                        for word in text.split():
-                            if len(word) >= MIN_WORD_LENGTH and word.lower() in DICTIONARY:
-                                results.add(word.upper())
+                    scan_letter_run(text)
                     text = ""
-            if len(text) >= MIN_WORD_LENGTH:
-                for word in text.split():
-                    if len(word) >= MIN_WORD_LENGTH and word.lower() in DICTIONARY:
-                        results.add(word.upper())
+            scan_letter_run(text)
 
     return sorted(results)
 
