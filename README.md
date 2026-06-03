@@ -24,11 +24,11 @@ The project is split into three main components:
 
 The server dashboard shows active reporters, recent anomalies, a map, a correlation chart, and any leaked words reported by clients. A shared time selector drives the map, anomaly list, chart, and leaked-word panel together. Supported views are 15 minutes, 1 hour, 24 hours, week, month, all time, and a custom event lookup for a day/week/month around a selected date.
 
-Leaked words are dictionary matches found only after a statistical glitch triggers an intensive scan of the same rolling bit buffer. The Python client scans ASCII across bit shifts, inverted bytes, bit-reversed bytes, and backwards byte order, reporting dictionary words of 4 or more letters.
+Leaked words are dictionary matches found only after a statistical glitch triggers an intensive scan of the same rolling bit buffer. The Python client scans ASCII across bit shifts, inverted bytes, bit-reversed bytes, and backwards byte order, reporting dictionary words of 3 or more letters. Short matches are common in random data, so the client filters dictionary noise and reports the longest matches first.
 
 ## Alert Rate
 
-Both the Python client and mobile PWA use a 10,000-bit rolling window, analyze once per minute, and alert when either statistical test returns `p < 3e-3`. Because adjacent analyses mostly reuse the same rolling-window data, this targets roughly one false-positive-style "glitch" every 2-3 days per continuously running client. The Python client can override this with `GLITCH_P_THRESHOLD`, `GLITCH_WINDOW_SIZE`, and `GLITCH_ANALYSIS_INTERVAL`.
+Both the Python client and mobile PWA use a 10,000-bit rolling window, analyze once per minute, and alert when either statistical test returns `p < 3e-4`. Because adjacent analyses mostly reuse the same rolling-window data, alert-rate estimates are approximate. The Python client can override this with `GLITCH_P_THRESHOLD`, `GLITCH_MIN_WORD_LENGTH`, `GLITCH_MAX_DETECTED_WORDS`, `GLITCH_WINDOW_SIZE`, and `GLITCH_ANALYSIS_INTERVAL`.
 
 ## Getting Started
 
