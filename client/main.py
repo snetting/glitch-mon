@@ -142,9 +142,9 @@ def scan_for_words(bit_buffer):
             return
         t = run_text.lower()
         # Scan substrings. Runs are typically ~1-7 chars in random bytes, so this is cheap.
-        max_len = min(len(t), MAX_WORD_LENGTH)
         for i in range(0, len(t) - MIN_WORD_LENGTH + 1):
-            for L in range(MIN_WORD_LENGTH, max_len - i + 1):
+            max_len = min(len(t) - i, MAX_WORD_LENGTH)
+            for L in range(MIN_WORD_LENGTH, max_len + 1):
                 w = t[i : i + L]
                 if w in DICTIONARY:
                     results.add(w.upper())
