@@ -90,7 +90,7 @@
         <div class="word-panel">
             <div style="text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; border-bottom: 1px solid #030;">Leaked Words</div>
             <div class="word-explainer">
-                When a statistical glitch is detected, the client scans the same rolling bit buffer as ASCII across bit shifts, inverted bytes, bit-reversed bytes, and backwards byte order. Any 3+ letter dictionary matches are reported here as leaked words. Short matches are common in random data, so the client filters dictionary noise and reports the longest matches first.
+                When a statistical glitch is detected, the client scans the same rolling bit buffer as ASCII across bit shifts, inverted bytes, bit-reversed bytes, and backwards byte order. Any 4+ letter dictionary matches are reported here as leaked words. Most glitches should have none; an empty list means no dictionary words were found in the selected time span.
             </div>
             <div id="word-cloud" class="word-cloud">
                 <span style="color: #030;">No leaked words in selected span.</span>

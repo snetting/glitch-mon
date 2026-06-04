@@ -26,18 +26,17 @@ WINDOW_SIZE = int(os.environ.get("GLITCH_WINDOW_SIZE", "10000"))
 CHECK_INTERVAL = float(os.environ.get("GLITCH_CHECK_INTERVAL", "1"))
 ANALYSIS_INTERVAL = float(os.environ.get("GLITCH_ANALYSIS_INTERVAL", "60"))
 # The 10,000-bit rolling window receives about 480 fresh bits per minute, so
-# adjacent analyses are strongly overlapping. A 3e-4 threshold keeps alerts
-# rarer now that shorter leaked-word fragments are reported.
-THRESHOLD = float(os.environ.get("GLITCH_P_THRESHOLD", "3e-4"))
+# adjacent analyses are strongly overlapping. A 3e-3 threshold targets roughly
+# one alert every 2-3 days per continuously running client under ideal p-values.
+THRESHOLD = float(os.environ.get("GLITCH_P_THRESHOLD", "3e-3"))
 
 # Dictionary for word scanning
 DICTIONARY = set()
 DICTIONARY_LOADED = False
-MIN_WORD_LENGTH = int(os.environ.get("GLITCH_MIN_WORD_LENGTH", "3"))
+MIN_WORD_LENGTH = 4
 # Contiguous ASCII letter runs in random bytes are usually very short. Still, cap the
 # substring scan to keep worst-case work bounded in the (rare) case of long runs.
 MAX_WORD_LENGTH = int(os.environ.get("GLITCH_MAX_WORD_LENGTH", "24"))
-MAX_DETECTED_WORDS = int(os.environ.get("GLITCH_MAX_DETECTED_WORDS", "30"))
 
 def log(message):
     timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
@@ -50,23 +49,10 @@ def load_system_dictionary():
         if os.path.exists(path):
             try:
                 with open(path, "r") as f:
-                    # Use only lowercase ASCII alphabetic entries. The system wordlist
-                    # includes acronyms and proper names; lowercasing those creates many
-                    # random-data false matches, especially for 3-letter fragments.
-                    DICTIONARY = {
-                        word
-                        for line in f
-                        if len(word := line.strip()) >= MIN_WORD_LENGTH
-                        and word.isascii()
-                        and word.isalpha()
-                        and word.islower()
-                    }
+                    # Load words of length 4+ to balance sensitivity with random short-word noise.
+                    DICTIONARY = {line.strip().lower() for line in f if len(line.strip()) >= MIN_WORD_LENGTH}
                 DICTIONARY_LOADED = True
-                log(
-                    "SYSTEM DICTIONARY FOUND: "
-                    f"Loaded {len(DICTIONARY)} words from {path} "
-                    f"(length {MIN_WORD_LENGTH}-{MAX_WORD_LENGTH})"
-                )
+                log(f"SYSTEM DICTIONARY FOUND: Loaded {len(DICTIONARY)} words from {path}")
                 return
             except Exception as e:
                 log(f"ERROR: Could not load dictionary {path}: {e}")
@@ -74,11 +60,9 @@ def load_system_dictionary():
     # Fallback to a tiny essential list if no system dict found
     if not DICTIONARY_LOADED:
         DICTIONARY = {
-            "air", "arc", "ash", "bad", "bit", "bug", "cat", "cry", "day",
-            "dead", "dog", "end", "entropy", "fear", "fire", "god", "hope",
-            "life", "love", "mars", "matrix", "moon", "reality", "red",
-            "run", "signal", "sky", "sun", "system", "time", "true", "war",
-            "yes", "void", "vortex",
+            "dead", "entropy", "fear", "fire", "glitch", "hope", "life", "love",
+            "mars", "matrix", "moon", "reality", "signal", "system", "time",
+            "true", "void", "vortex",
         }
         log("WARNING: No system dictionary found. Falling back to minimal internal wordlist.")
 
@@ -150,15 +134,17 @@ def scan_for_words(bit_buffer):
     def scan_letter_run(run_text: str):
         """
         Given a contiguous run of ASCII letters, find any dictionary words within it.
-        Checks all substrings so a longer letter run can produce embedded words.
+        The previous implementation only checked the entire run as a single "word",
+        which dramatically reduced detection of 5+ letter words (and missed all
+        substrings inside longer runs).
         """
         if len(run_text) < MIN_WORD_LENGTH:
             return
         t = run_text.lower()
         # Scan substrings. Runs are typically ~1-7 chars in random bytes, so this is cheap.
+        max_len = min(len(t), MAX_WORD_LENGTH)
         for i in range(0, len(t) - MIN_WORD_LENGTH + 1):
-            max_len = min(len(t) - i, MAX_WORD_LENGTH)
-            for L in range(MIN_WORD_LENGTH, max_len + 1):
+            for L in range(MIN_WORD_LENGTH, max_len - i + 1):
                 w = t[i : i + L]
                 if w in DICTIONARY:
                     results.add(w.upper())
@@ -184,7 +170,7 @@ def scan_for_words(bit_buffer):
                     text = ""
             scan_letter_run(text)
 
-    return sorted(results, key=lambda word: (-len(word), word))[:MAX_DETECTED_WORDS]
+    return sorted(results)
 
 def send_notification(message, is_alert=True, test_type=None, p_value=None, detected_words=None):
     prefix = "🚨 " if is_alert else "ℹ️ "
